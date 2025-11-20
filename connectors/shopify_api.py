@@ -641,7 +641,11 @@ class ShopifyAPI:
             pageInfo { hasNextPage endCursor }
             edges {
               node {
+                id
                 title handle
+                vendor
+                productType
+                tags
                 collections(first: 20) { edges { node { id title } } }
                 featuredImage { url }
                 variants(first: 100) {
