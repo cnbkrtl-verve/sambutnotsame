@@ -592,6 +592,9 @@ class ShopifyAPI:
                   id
                   title
                   handle
+                  vendor
+                  productType
+                  tags
                   variants(first: 50) {
                     edges {
                       node {

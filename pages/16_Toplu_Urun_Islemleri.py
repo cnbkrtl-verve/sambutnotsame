@@ -178,17 +178,24 @@ if st.session_state.target_products:
                     input_tags_list = [t.strip() for t in new_tags.split(',') if t.strip()]
                     
                     if tag_action == "Ekle (Mevcutlara ekle)":
-                        # Mevcutlarla birleştir, duplicate önle
-                        final_tags = list(set(current_tags + input_tags_list))
+                        # Eğer eklenecek tüm etiketler zaten varsa, güncelleme yapma
+                        if all(tag in current_tags for tag in input_tags_list):
+                            # Değişiklik yok, updates'e ekleme
+                            pass
+                        else:
+                            # Mevcutlarla birleştir, duplicate önle
+                            final_tags = list(set(current_tags + input_tags_list))
+                            updates['tags'] = final_tags
                     else:
                         # Tamamen değiştir
                         final_tags = input_tags_list
-                    
-                    updates['tags'] = final_tags
+                        updates['tags'] = final_tags
                 
                 # 2. Marka Mantığı
                 if enable_vendor and new_vendor:
-                    updates['vendor'] = new_vendor
+                    # Eğer marka zaten aynıysa güncelleme yapma
+                    if product.get('vendor') != new_vendor:
+                        updates['vendor'] = new_vendor
                 
                 # 3. Otomatik Tür Mantığı
                 if enable_auto_type:
@@ -204,7 +211,9 @@ if st.session_state.target_products:
                             break
                     
                     if found_type:
-                        updates['product_type'] = found_type
+                        # Eğer tür zaten aynıysa güncelleme yapma
+                        if product.get('productType') != found_type:
+                            updates['product_type'] = found_type
                 
                 # Güncelleme varsa API çağır
                 if updates:
@@ -223,7 +232,8 @@ if st.session_state.target_products:
                         fail_count += 1
                         st.error(f"Hata ({p_title}): {result.get('message')}")
                 else:
-                    # Güncelleme gerekmedi
+                    # Güncelleme gerekmedi, sadece progress ilerlet
+                    status_text.text(f"Atlanıyor (Değişiklik yok) ({i+1}/{total}): {p_title}")
                     pass
                 
                 progress_bar.progress((i + 1) / total)
