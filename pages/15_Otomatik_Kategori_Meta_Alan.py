@@ -238,6 +238,9 @@ if st.button("👁️ Önizleme Yap", type="secondary"):
                 category = CategoryMetafieldManager.detect_category(title)
                 
                 if category:
+                    # Taxonomy ID al
+                    taxonomy_id = CategoryMetafieldManager.get_taxonomy_id(category)
+                    
                     # 🌟 YENİ: Shopify önerilerini al (varsa)
                     shopify_recommendations = None
                     try:
@@ -261,7 +264,7 @@ if st.button("👁️ Önizleme Yap", type="secondary"):
                     
                     preview_data.append({
                         'Ürün': title[:50] + '...' if len(title) > 50 else title,
-                        'Kategori': category,
+                        'Kategori': f"{category} ({taxonomy_id})" if taxonomy_id else category,
                         'Meta Alanlar': metafield_summary if metafield_summary else 'Yok'
                     })
                 else:
@@ -358,6 +361,9 @@ if st.button("🚀 Güncellemeyi Başlat", type="primary", disabled=(not update_
                         results_placeholder.markdown(results_html, unsafe_allow_html=True)
                         continue
                     
+                    # Taxonomy ID al
+                    taxonomy_id = CategoryMetafieldManager.get_taxonomy_id(category)
+                    
                     # 🌟 YENİ: Shopify önerilerini al (varsa)
                     shopify_recommendations = None
                     try:
@@ -380,11 +386,12 @@ if st.button("🚀 Güncellemeyi Başlat", type="primary", disabled=(not update_
                         # DRY RUN: Sadece göster
                         stats['updated'] += 1
                         metafield_list = ', '.join([f"{mf['key']}: {mf['value']}" for mf in metafields])
+                        cat_display = f"{category} ({taxonomy_id})" if taxonomy_id else category
                         
                         results_html += f"""
                         <div style='padding: 8px; margin: 3px 0; border-left: 3px solid #2196f3; background: #e3f2fd;'>
                             <small>🔍 <b>{title[:60]}</b></small><br>
-                            <small>&nbsp;&nbsp;&nbsp;&nbsp;Kategori: <b>{category}</b> | Meta: {metafield_list}</small>
+                            <small>&nbsp;&nbsp;&nbsp;&nbsp;Kategori: <b>{cat_display}</b> | Meta: {metafield_list}</small>
                         </div>
                         """
                     else:
@@ -394,7 +401,8 @@ if st.button("🚀 Güncellemeyi Başlat", type="primary", disabled=(not update_
                                 gid,
                                 category if update_category else None,
                                 metafields if update_metafields else [],
-                                use_shopify_suggestions=use_shopify_suggestions  # Yeni parametre
+                                use_shopify_suggestions=use_shopify_suggestions,  # Yeni parametre
+                                taxonomy_id=taxonomy_id if update_category else None
                             )
                             
                             if result.get('success'):

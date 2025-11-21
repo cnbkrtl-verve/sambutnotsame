@@ -7,6 +7,8 @@ Shopify'da manuel işlem yapmadan kategori ve meta alanlarını otomatik güncel
 
 import re
 import logging
+import json
+import os
 from typing import Dict, List, Optional, Tuple
 
 # Varyant helper fonksiyonlarını import et
@@ -36,501 +38,35 @@ class CategoryMetafieldManager:
     Kategori tespit ve meta alan yönetimi için merkezi sınıf.
     """
     
-    # Kategori tespit için anahtar kelimeler (öncelik sırasına göre)
-    # ÖNEMLİ: Daha spesifik kelimeler üstte olmalı!
-    CATEGORY_KEYWORDS = {
-        'Sweatshirt': ['sweatshirt', 'sweat', 'hoodie'],
-        'T-shirt': ['t-shirt', 'tshirt', 'tişört', 'tisort'],
-        'Elbise': ['elbise', 'dress'],
-        'Bluz': ['bluz', 'blouse'],
-        'Gömlek': ['gömlek', 'shirt', 'tunik gömlek'],
-        'Pantolon': ['pantolon', 'pants', 'jean', 'kot'],
-        'Jogger': ['jogger', 'jogging'],
-        'Eşofman Altı': ['eşofman altı', 'eşofman alt', 'esofman alt', 'tracksuit bottom'],
-        'Tayt': ['tayt', 'legging', 'レギンス'],
-        'Şort': ['şort', 'sort', 'short', 'bermuda'],
-        'Etek': ['etek', 'skirt'],
-        'Ceket': ['ceket', 'jacket', 'blazer'],
-        'Mont': ['mont', 'coat', 'parka', 'trençkot', 'trench'],
-        'Kaban': ['kaban', 'palto', 'overcoat'],
-        'Kazak': ['kazak', 'sweater', 'pullover', 'boğazlı', 'balıkçı yaka'],
-        'Hırka': ['hırka', 'hirka', 'cardigan'],
-        'Süveter': ['süveter', 'suveter', 'triko'],
-        'Tunik': ['tunik', 'tunic'],
-        'Yelek': ['yelek', 'vest'],
-        'Şal': ['şal', 'sal', 'scarf', 'atkı', 'atki', 'eşarp'],
-        'Takım': ['takım', 'takim', 'suit', 'set', 'ikili'],
-        'Mayo': ['mayo', 'bikini', 'swimsuit', 'deniz'],
-        'Gecelik': ['gecelik', 'pijama', 'nightgown', 'uyku'],
-        'Tulum': ['tulum', 'jumpsuit', 'overall', 'salopet']
-    }
+    _config = None
     
-    # Her kategori için meta alan şablonları
-    # Shopify'daki standart meta alanlarına göre düzenlenmiştir
-    CATEGORY_METAFIELDS = {
-        'Elbise': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.yaka_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'yaka_tipi',
-                'description': 'Yaka tipi (V yaka, Bisiklet yaka, Halter vb.)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Kısa kol, Uzun kol, Kolsuz vb.)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Elbise boyu (Mini, Midi, Maxi, Diz üstü vb.)'
-            },
-            'custom.desen': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'desen',
-                'description': 'Desen (Çiçekli, Düz, Leopar, Çizgili vb.)'
-            },
-            'custom.kullanim_alani': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kullanim_alani',
-                'description': 'Kullanım alanı (Günlük, Gece, Kokteyl vb.)'
-            }
-        },
-        'T-shirt': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.yaka_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'yaka_tipi',
-                'description': 'Yaka tipi (V yaka, Bisiklet yaka, Polo vb.)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Kısa kol, Uzun kol vb.)'
-            },
-            'custom.desen': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'desen',
-                'description': 'Desen (Baskılı, Düz, Çizgili vb.)'
-            }
-        },
-        'Bluz': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.yaka_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'yaka_tipi',
-                'description': 'Yaka tipi (V yaka, Hakim yaka, Gömlek yaka vb.)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Kısa kol, Uzun kol, 3/4 kol vb.)'
-            },
-            'custom.desen': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'desen',
-                'description': 'Desen'
-            }
-        },
-        'Pantolon': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.pacha_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'pacha_tipi',
-                'description': 'Paça tipi (Dar paça, Bol paça, İspanyol paça vb.)'
-            },
-            'custom.bel_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'bel_tipi',
-                'description': 'Bel tipi (Yüksek bel, Normal bel, Düşük bel vb.)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Pantolon boyu (Uzun, 7/8, Capri vb.)'
-            }
-        },
-        'Şort': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Şort boyu (Mini, Midi, Bermuda vb.)'
-            },
-            'custom.bel_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'bel_tipi',
-                'description': 'Bel tipi (Yüksek bel, Normal bel vb.)'
-            }
-        },
-        'Etek': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Etek boyu (Mini, Midi, Maxi vb.)'
-            },
-            'custom.model': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'model',
-                'description': 'Model (Kalem, Pileli, A kesim vb.)'
-            }
-        },
-        'Ceket': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol vb.)'
-            },
-            'custom.kapanma_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kapanma_tipi',
-                'description': 'Kapanma tipi (Fermuarlı, Düğmeli, Çıtçıtlı vb.)'
-            }
-        },
-        'Mont': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol vb.)'
-            },
-            'custom.kapanma_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kapanma_tipi',
-                'description': 'Kapanma tipi (Fermuarlı, Düğmeli, Çıtçıtlı vb.)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Mont boyu (Kısa, Orta, Uzun vb.)'
-            },
-            'custom.kapusonlu': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kapusonlu',
-                'description': 'Kapüşon durumu (Kapüşonlu, Kapüşonsuz)'
-            }
-        },
-        'Gömlek': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.yaka_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'yaka_tipi',
-                'description': 'Yaka tipi (Klasik, Hakim, İtalyan vb.)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol vb.)'
-            },
-            'custom.desen': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'desen',
-                'description': 'Desen (Düz, Çizgili, Kareli vb.)'
-            }
-        },
-        'Hırka': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol, Kolsuz vb.)'
-            },
-            'custom.kapanma_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kapanma_tipi',
-                'description': 'Kapanma tipi (Düğmeli, Açık, Fermuarlı vb.)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Hırka boyu (Kısa, Orta, Uzun vb.)'
-            }
-        },
-        'Sweatshirt': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol vb.)'
-            },
-            'custom.kapusonlu': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kapusonlu',
-                'description': 'Kapüşon durumu (Kapüşonlu, Kapüşonsuz)'
-            },
-            'custom.desen': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'desen',
-                'description': 'Desen (Baskılı, Düz, Logolu vb.)'
-            }
-        },
-        'Kazak': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.yaka_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'yaka_tipi',
-                'description': 'Yaka tipi (Boğazlı, V yaka, Bisiklet yaka, Balıkçı vb.)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol vb.)'
-            },
-            'custom.desen': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'desen',
-                'description': 'Desen (Düz, Örgü, Desenli vb.)'
-            }
-        },
-        'Süveter': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.yaka_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'yaka_tipi',
-                'description': 'Yaka tipi (Boğazlı, V yaka, Bisiklet yaka vb.)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol vb.)'
-            }
-        },
-        'Jogger': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.bel_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'bel_tipi',
-                'description': 'Bel tipi (Lastikli, İpli vb.)'
-            },
-            'custom.pacha_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'pacha_tipi',
-                'description': 'Paça tipi (Dar paça, Lastikli paça vb.)'
-            },
-            'custom.cep': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'cep',
-                'description': 'Cep özellikleri (Cepli, Cepsiz vb.)'
-            }
-        },
-        'Eşofman Altı': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.bel_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'bel_tipi',
-                'description': 'Bel tipi (Lastikli, İpli vb.)'
-            },
-            'custom.pacha_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'pacha_tipi',
-                'description': 'Paça tipi (Dar paça, Bol paça, Lastikli paça vb.)'
-            },
-            'custom.kullanim_alani': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kullanim_alani',
-                'description': 'Kullanım alanı (Spor, Günlük vb.)'
-            }
-        },
-        'Tayt': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.bel_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'bel_tipi',
-                'description': 'Bel tipi (Yüksek bel, Normal bel vb.)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Tayt boyu (Uzun, 7/8, Capri vb.)'
-            },
-            'custom.kullanim_alani': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kullanim_alani',
-                'description': 'Kullanım alanı (Spor, Günlük vb.)'
-            }
-        },
-        'Tunik': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.yaka_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'yaka_tipi',
-                'description': 'Yaka tipi (V yaka, Hakim yaka, Bisiklet yaka vb.)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol vb.)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Tunik boyu (Kısa, Orta, Uzun vb.)'
-            }
-        },
-        'Tulum': {
-            'custom.renk': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'renk',
-                'description': 'Renk (Varyantlardan otomatik doldurulur)'
-            },
-            'custom.kol_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'kol_tipi',
-                'description': 'Kol tipi (Uzun kol, Kısa kol, Kolsuz vb.)'
-            },
-            'custom.pacha_tipi': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'pacha_tipi',
-                'description': 'Paça tipi (Dar, Bol, İspanyol vb.)'
-            },
-            'custom.boy': {
-                'type': 'single_line_text_field',
-                'namespace': 'custom',
-                'key': 'boy',
-                'description': 'Tulum boyu (Uzun, 7/8, Şort vb.)'
-            }
-        }
-    }
+    @classmethod
+    def _load_config(cls):
+        if cls._config is None:
+            try:
+                config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'category_config.json')
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cls._config = json.load(f)
+            except Exception as e:
+                logging.error(f"Konfigürasyon dosyası yüklenemedi: {e}")
+                cls._config = {"categories": {}, "patterns": {}}
+        return cls._config
+
+    @classmethod
+    def get_category_keywords(cls):
+        config = cls._load_config()
+        keywords = {}
+        for cat, data in config.get('categories', {}).items():
+            keywords[cat] = data.get('keywords', [])
+        return keywords
+
+    @classmethod
+    def get_category_metafields(cls):
+        config = cls._load_config()
+        metafields = {}
+        for cat, data in config.get('categories', {}).items():
+            metafields[cat] = data.get('metafields', {})
+        return metafields
     
     @staticmethod
     def detect_category(product_title: str) -> Optional[str]:
@@ -547,15 +83,27 @@ class CategoryMetafieldManager:
             return None
         
         title_lower = product_title.lower()
+        keywords_map = CategoryMetafieldManager.get_category_keywords()
         
         # Öncelik sırasına göre kontrol et
-        for category, keywords in CategoryMetafieldManager.CATEGORY_KEYWORDS.items():
+        for category, keywords in keywords_map.items():
             for keyword in keywords:
                 if keyword.lower() in title_lower:
                     logging.info(f"Kategori tespit edildi: '{category}' (Anahtar: '{keyword}')")
                     return category
         
         logging.warning(f"'{product_title}' için kategori tespit edilemedi")
+        return None
+
+    @staticmethod
+    def get_taxonomy_id(category: str) -> Optional[str]:
+        """
+        Kategori adı için Taxonomy ID (GID) döndürür.
+        """
+        config = CategoryMetafieldManager._load_config()
+        cat_data = config.get('categories', {}).get(category)
+        if cat_data:
+            return cat_data.get('taxonomy_id')
         return None
     
     @staticmethod
@@ -589,164 +137,8 @@ class CategoryMetafieldManager:
         title_lower = product_title.lower()
         desc_lower = product_description.lower() if product_description else ""
         
-        # Ortak kalıplar (Genişletilmiş + Öncelikli Sıralama)
-        patterns = {
-            'yaka_tipi': [
-                (r'boğazlı\s*yaka', 'Boğazlı Yaka'),
-                (r'boğazlı', 'Boğazlı'),
-                (r'v\s*yaka', 'V Yaka'),
-                (r'v\-yaka', 'V Yaka'),
-                (r'bisiklet\s*yaka', 'Bisiklet Yaka'),
-                (r'hakim\s*yaka', 'Hakim Yaka'),
-                (r'polo\s*yaka', 'Polo Yaka'),
-                (r'balıkçı\s*yaka', 'Balıkçı Yaka'),
-                (r'balıkçı', 'Balıkçı Yaka'),
-                (r'halter\s*yaka', 'Halter'),
-                (r'halter', 'Halter'),
-                (r'kayık\s*yaka', 'Kayık Yaka'),
-                (r'gömlek\s*yaka', 'Gömlek Yaka'),
-                (r'klasik\s*yaka', 'Klasik Yaka'),
-                (r'yuvarlak\s*yaka', 'Yuvarlak Yaka'),
-                (r'kare\s*yaka', 'Kare Yaka'),
-                (r'askılı', 'Askılı'),
-                (r'straplez', 'Straplez'),
-                (r'tek\s*omuz', 'Tek Omuz'),
-            ],
-            'kol_tipi': [
-                (r'uzun\s*kol', 'Uzun Kol'),
-                (r'kısa\s*kol', 'Kısa Kol'),
-                (r'kolsuz', 'Kolsuz'),
-                (r'3/4\s*kol', '3/4 Kol'),
-                (r'yarım\s*kol', 'Yarım Kol'),
-                (r'balon\s*kol', 'Balon Kol'),
-                (r'fırfırlı\s*kol', 'Fırfırlı Kol'),
-                (r'volan\s*kol', 'Volan Kol'),
-                (r'düşük\s*omuz', 'Düşük Omuz'),
-            ],
-            'boy': [
-                (r'maxi\s*boy', 'Maxi'),
-                (r'maxi', 'Maxi'),
-                (r'midi\s*boy', 'Midi'),
-                (r'midi', 'Midi'),
-                (r'mini\s*boy', 'Mini'),
-                (r'mini', 'Mini'),
-                (r'diz\s*üst', 'Diz Üstü'),
-                (r'diz\s*alt', 'Diz Altı'),
-                (r'bilekli', 'Bilekli'),
-                (r'uzun\s*boy', 'Uzun'),
-                (r'orta\s*boy', 'Orta'),
-                (r'kısa\s*boy', 'Kısa'),
-            ],
-            'desen': [
-                (r'leopar\s*desen', 'Leopar'),
-                (r'leopar', 'Leopar'),
-                (r'çiçek\s*desen', 'Çiçekli'),
-                (r'çiçekli', 'Çiçekli'),
-                (r'çiçek', 'Çiçekli'),
-                (r'desenli', 'Desenli'),
-                (r'düz\s*renk', 'Düz'),
-                (r'düz', 'Düz'),
-                (r'çizgi\s*desen', 'Çizgili'),
-                (r'çizgili', 'Çizgili'),
-                (r'baskı\s*desen', 'Baskılı'),
-                (r'baskılı', 'Baskılı'),
-                (r'logolu', 'Logolu'),
-                (r'puantiye\s*desen', 'Puantiyeli'),
-                (r'puantiyeli', 'Puantiyeli'),
-                (r'kareli', 'Kareli'),
-                (r'örgü\s*desen', 'Örgü'),
-                (r'örgü', 'Örgü'),
-                (r'jakarlı', 'Jakarlı'),
-                (r'geometrik', 'Geometrik'),
-                (r'soyut', 'Soyut'),
-            ],
-            'pacha_tipi': [
-                (r'dar\s*paça', 'Dar Paça'),
-                (r'bol\s*paça', 'Bol Paça'),
-                (r'ispanyol\s*paça', 'İspanyol Paça'),
-                (r'düz\s*paça', 'Düz Paça'),
-                (r'lastikli\s*paça', 'Lastikli Paça'),
-                (r'wide\s*leg', 'Bol Paça'),
-                (r'skinny', 'Dar Paça'),
-            ],
-            'bel_tipi': [
-                (r'yüksek\s*bel', 'Yüksek Bel'),
-                (r'normal\s*bel', 'Normal Bel'),
-                (r'düşük\s*bel', 'Düşük Bel'),
-                (r'lastikli\s*bel', 'Lastikli'),
-                (r'ipli\s*bel', 'İpli'),
-                (r'kemer\s*detaylı', 'Kemerli'),
-            ],
-            'kapanma_tipi': [
-                (r'fermuarlı', 'Fermuarlı'),
-                (r'fermuar', 'Fermuarlı'),
-                (r'düğmeli', 'Düğmeli'),
-                (r'düğme', 'Düğmeli'),
-                (r'çıtçıtlı', 'Çıtçıtlı'),
-                (r'çıtçıt', 'Çıtçıtlı'),
-                (r'açık\s*model', 'Açık'),
-                (r'önden\s*açık', 'Önden Açık'),
-            ],
-            'kapusonlu': [
-                (r'kapüşonlu', 'Kapüşonlu'),
-                (r'kapusonlu', 'Kapüşonlu'),
-                (r'hoodie', 'Kapüşonlu'),
-            ],
-            'kullanim_alani': [
-                (r'spor', 'Spor'),
-                (r'günlük', 'Günlük'),
-                (r'gece', 'Gece'),
-                (r'kokteyl', 'Kokteyl'),
-                (r'casual', 'Günlük'),
-                (r'ofis', 'Ofis'),
-                (r'iş', 'İş'),
-                (r'düğün', 'Düğün'),
-                (r'özel\s*gün', 'Özel Gün'),
-            ],
-            'cep': [
-                (r'cepli', 'Cepli'),
-                (r'cepsiz', 'Cepsiz'),
-            ],
-            'model': [
-                (r'kalem\s*etek', 'Kalem'),
-                (r'kalem', 'Kalem'),
-                (r'pileli', 'Pileli'),
-                (r'a\s*kesim', 'A Kesim'),
-                (r'balon', 'Balon'),
-                (r'saten', 'Saten'),
-                (r'volanlı', 'Volanlı'),
-            ],
-            'kumaş': [
-                # Kumaş tipleri (varyantlardan veya açıklamadan)
-                (r'pamuklu', 'Pamuklu'),
-                (r'pamuk', 'Pamuklu'),
-                (r'viskon', 'Viskon'),
-                (r'polyester', 'Polyester'),
-                (r'likralı', 'Likralı'),
-                (r'likra', 'Likralı'),
-                (r'denim', 'Denim'),
-                (r'kot', 'Denim'),
-                (r'jean', 'Denim'),
-                (r'saten', 'Saten'),
-                (r'kadife', 'Kadife'),
-                (r'triko', 'Triko'),
-                (r'örme', 'Örme'),
-                (r'dokuma', 'Dokuma'),
-                (r'şifon', 'Şifon'),
-                (r'krep', 'Krep'),
-            ],
-            'stil': [
-                (r'oversize', 'Oversize'),
-                (r'slim\s*fit', 'Slim Fit'),
-                (r'regular\s*fit', 'Regular Fit'),
-                (r'loose', 'Bol Kesim'),
-                (r'fitted', 'Vücuda Oturan'),
-                (r'boyfriend', 'Boyfriend'),
-                (r'mom', 'Mom'),
-                (r'vintage', 'Vintage'),
-                (r'retro', 'Retro'),
-            ]
-        }
+        config = CategoryMetafieldManager._load_config()
+        patterns = config.get('patterns', {})
         
         # ============================================
         # KATMAN 1: SHOPIFY ÖNERİLERİNDEN AL (EN YÜKSEK ÖNCELİK)
@@ -834,9 +226,8 @@ class CategoryMetafieldManager:
         Returns:
             Meta alan şablonları
         """
-        return CategoryMetafieldManager.CATEGORY_METAFIELDS.get(category, {})
+        return CategoryMetafieldManager.get_category_metafields().get(category, {})
     
-    @staticmethod
     @staticmethod
     def prepare_metafields_for_shopify(
         category: str, 
@@ -899,8 +290,9 @@ class CategoryMetafieldManager:
             Kategori adı ve meta alan sayısı
         """
         summary = {}
-        for category, metafields in CategoryMetafieldManager.CATEGORY_METAFIELDS.items():
-            summary[category] = len(metafields)
+        metafields = CategoryMetafieldManager.get_category_metafields()
+        for category, fields in metafields.items():
+            summary[category] = len(fields)
         return summary
 
 
