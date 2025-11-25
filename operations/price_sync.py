@@ -348,6 +348,8 @@ def update_collection_custom(shopify_api, collection_id, adjustment_type, value,
                 
                 # Yeni fiyatı hesapla
                 new_price = current_price
+                new_compare_at = None
+
                 if adjustment_type == 'percentage_inc':
                     new_price = current_price * (1 + value / 100)
                 elif adjustment_type == 'percentage_dec':
@@ -362,15 +364,23 @@ def update_collection_custom(shopify_api, collection_id, adjustment_type, value,
                     else:
                         # Compare At Price yoksa işlem yapma (veya mevcut fiyatı koru)
                         continue
+                elif adjustment_type == 'convert_to_discounted':
+                    # İndirimsiz fiyatı indirimliye çevir
+                    new_compare_at = current_price
+                    new_price = current_price * (1 - value / 100)
                 
                 # Yuvarlama (X.99)
                 import math
                 new_price = math.floor(new_price) + 0.99
                 
-                updates.append({
+                payload = {
                     "id": variant['id'],
                     "price": f"{new_price:.2f}"
-                })
+                }
+                if new_compare_at is not None:
+                    payload["compareAtPrice"] = f"{new_compare_at:.2f}"
+                
+                updates.append(payload)
             
             if updates:
                 result = update_prices_for_single_product(shopify_api, product_id, updates, rate_limiter)

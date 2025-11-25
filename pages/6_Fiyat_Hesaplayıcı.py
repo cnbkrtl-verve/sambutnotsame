@@ -752,124 +752,125 @@ if st.session_state.calculated_df is not None:
                 thread.start()
                 st.rerun()
 
-    # --- YENİ BÖLÜM: EKSTRA İŞLEMLER ---
-    st.markdown("---")
-    st.subheader("🛠️ Ekstra İşlemler")
-    
-    extra_tab1, extra_tab2 = st.tabs(["📦 Tekil Ürün Güncelleme", "📚 Koleksiyon Bazlı Güncelleme"])
-    
-    with extra_tab1:
-        st.info("Belirli bir ürünün veya varyantın fiyatını manuel olarak güncelleyin.")
-        col_ex1, col_ex2 = st.columns(2)
-        
-        single_sku = col_ex1.text_input("Ürün SKU veya ID (gid://...)", placeholder="Örn: TSHIRT-001")
-        single_price = col_ex2.number_input("Yeni Fiyat (TL)", min_value=0.0, step=0.1)
-        single_compare_price = col_ex2.number_input("İndirimsiz Fiyat (Opsiyonel)", min_value=0.0, step=0.1, value=0.0)
-        
-        if st.button("Tekil Güncelle", disabled=st.session_state.update_in_progress):
-            if not single_sku or single_price <= 0:
-                st.error("Lütfen geçerli bir SKU ve fiyat girin.")
-            else:
-                with st.spinner(f"{single_sku} güncelleniyor..."):
-                    from operations.price_sync import update_single_product_custom
-                    shopify_api = ShopifyAPI(st.session_state.shopify_store, st.session_state.shopify_token)
-                    
-                    result = update_single_product_custom(
-                        shopify_api, 
-                        single_sku, 
-                        single_price, 
-                        single_compare_price if single_compare_price > 0 else None
-                    )
-                    
-                    if result.get('status') == 'success':
-                        st.success(f"✅ Başarılı! {result.get('updated_count')} varyant güncellendi.")
-                    else:
-                        st.error(f"❌ Hata: {result.get('reason')}")
+# --- YENİ BÖLÜM: EKSTRA İŞLEMLER ---
+st.markdown("---")
+st.subheader("🛠️ Ekstra İşlemler")
 
-    with extra_tab2:
-        st.info("Bir koleksiyondaki tüm ürünlere toplu fiyat kuralı uygulayın.")
-        
-        if st.button("Koleksiyonları Yükle"):
-            with st.spinner("Koleksiyonlar çekiliyor..."):
+extra_tab1, extra_tab2 = st.tabs(["📦 Tekil Ürün Güncelleme", "📚 Koleksiyon Bazlı Güncelleme"])
+
+with extra_tab1:
+    st.info("Belirli bir ürünün veya varyantın fiyatını manuel olarak güncelleyin.")
+    col_ex1, col_ex2 = st.columns(2)
+    
+    single_sku = col_ex1.text_input("Ürün SKU veya ID (gid://...)", placeholder="Örn: TSHIRT-001")
+    single_price = col_ex2.number_input("Yeni Fiyat (TL)", min_value=0.0, step=0.1)
+    single_compare_price = col_ex2.number_input("İndirimsiz Fiyat (Opsiyonel)", min_value=0.0, step=0.1, value=0.0)
+    
+    if st.button("Tekil Güncelle", disabled=st.session_state.update_in_progress):
+        if not single_sku or single_price <= 0:
+            st.error("Lütfen geçerli bir SKU ve fiyat girin.")
+        else:
+            with st.spinner(f"{single_sku} güncelleniyor..."):
+                from operations.price_sync import update_single_product_custom
                 shopify_api = ShopifyAPI(st.session_state.shopify_store, st.session_state.shopify_token)
-                collections = shopify_api.get_all_collections()
-                st.session_state.collections_list = {c['title']: c['id'] for c in collections}
-                st.rerun()
-        
-        if 'collections_list' in st.session_state:
-            selected_collection_name = st.selectbox("Koleksiyon Seçin", list(st.session_state.collections_list.keys()))
-            selected_collection_id = st.session_state.collections_list[selected_collection_name]
-            
-            col_rule1, col_rule2 = st.columns(2)
-            rule_type = col_rule1.selectbox("İşlem Tipi", [
-                ("Yüzde Artır (%)", "percentage_inc"),
-                ("Yüzde İndir (%)", "percentage_dec"),
-                ("Sabit Tutar Ekle (+TL)", "fixed_amount"),
-                ("İndirim Oranını Ayarla (%)", "set_discount_rate")
-            ], format_func=lambda x: x[0])
-            
-            rule_value = col_rule2.number_input("Değer", min_value=0.0, step=1.0, value=10.0)
-            
-            # Session state initialization for confirmation
-            if 'confirm_collection_update' not in st.session_state:
-                st.session_state.confirm_collection_update = False
-
-            if st.button("Toplu Güncelleme Başlat", type="primary", disabled=st.session_state.update_in_progress):
-                st.session_state.confirm_collection_update = True
-            
-            if st.session_state.confirm_collection_update:
-                st.warning("⚠️ Bu işlem seçili koleksiyondaki tüm ürünlerin fiyatlarını kalıcı olarak değiştirecektir!")
-                col_conf1, col_conf2 = st.columns(2)
-                with col_conf1:
-                    if st.button("✅ Evet, Onaylıyorum", type="primary", key="btn_confirm_update"):
-                        st.session_state.confirm_collection_update = False # Reset
-                        st.session_state.update_in_progress = True
-                        # Queue'yu oluştur ve değişkene ata
-                        st.session_state.sync_progress_queue = queue.Queue()
-                        progress_queue = st.session_state.sync_progress_queue
-                        
-                        # Thread için gerekli verileri al
-                        store_url = st.session_state.shopify_store
-                        store_token = st.session_state.shopify_token
-                        
-                        def run_collection_update(q, store, token, col_id, r_type, r_val):
-                            try:
-                                q.put({'progress': 1, 'message': 'İşlem başlatılıyor...'})
-                                
-                                # Importları thread içinde yap
-                                from operations.price_sync import update_collection_custom
-                                from connectors.shopify_api import ShopifyAPI
-                                
-                                q.put({'progress': 2, 'message': 'Shopify bağlantısı kuruluyor...'})
-                                shopify_api = ShopifyAPI(store, token)
-                                
-                                q.put({'progress': 5, 'message': 'Koleksiyon verileri çekiliyor...'})
-                                result = update_collection_custom(
-                                    shopify_api, 
-                                    col_id, 
-                                    r_type, 
-                                    r_val, 
-                                    progress_queue=q
-                                )
-                                q.put({"status": "done", "results": result})
-                                
-                            except Exception as e:
-                                logging.error(f"Collection update thread error: {e}")
-                                q.put({"status": "error", "message": f"İşlem hatası: {str(e)}"})
-
-                        # Thread'i başlat
-                        threading.Thread(
-                            target=run_collection_update, 
-                            args=(progress_queue, store_url, store_token, selected_collection_id, rule_type[1], rule_value),
-                            daemon=True
-                        ).start()
-                        
-                        st.rerun()
                 
-                with col_conf2:
-                    if st.button("❌ İptal", key="btn_cancel_update"):
-                        st.session_state.confirm_collection_update = False
-                        st.rerun()
+                result = update_single_product_custom(
+                    shopify_api, 
+                    single_sku, 
+                    single_price, 
+                    single_compare_price if single_compare_price > 0 else None
+                )
+                
+                if result.get('status') == 'success':
+                    st.success(f"✅ Başarılı! {result.get('updated_count')} varyant güncellendi.")
+                else:
+                    st.error(f"❌ Hata: {result.get('reason')}")
+
+with extra_tab2:
+    st.info("Bir koleksiyondaki tüm ürünlere toplu fiyat kuralı uygulayın.")
+    
+    if st.button("Koleksiyonları Yükle"):
+        with st.spinner("Koleksiyonlar çekiliyor..."):
+            shopify_api = ShopifyAPI(st.session_state.shopify_store, st.session_state.shopify_token)
+            collections = shopify_api.get_all_collections()
+            st.session_state.collections_list = {c['title']: c['id'] for c in collections}
+            st.rerun()
+    
+    if 'collections_list' in st.session_state:
+        selected_collection_name = st.selectbox("Koleksiyon Seçin", list(st.session_state.collections_list.keys()))
+        selected_collection_id = st.session_state.collections_list[selected_collection_name]
+        
+        col_rule1, col_rule2 = st.columns(2)
+        rule_type = col_rule1.selectbox("İşlem Tipi", [
+            ("Yüzde Artır (%)", "percentage_inc"),
+            ("Yüzde İndir (%)", "percentage_dec"),
+            ("Sabit Tutar Ekle (+TL)", "fixed_amount"),
+            ("İndirim Oranını Ayarla (%)", "set_discount_rate"),
+            ("İndirimsiz Fiyatı İndirimliye Çevir (%)", "convert_to_discounted")
+        ], format_func=lambda x: x[0])
+        
+        rule_value = col_rule2.number_input("Değer", min_value=0.0, step=1.0, value=10.0)
+        
+        # Session state initialization for confirmation
+        if 'confirm_collection_update' not in st.session_state:
+            st.session_state.confirm_collection_update = False
+
+        if st.button("Toplu Güncelleme Başlat", type="primary", disabled=st.session_state.update_in_progress):
+            st.session_state.confirm_collection_update = True
+        
+        if st.session_state.confirm_collection_update:
+            st.warning("⚠️ Bu işlem seçili koleksiyondaki tüm ürünlerin fiyatlarını kalıcı olarak değiştirecektir!")
+            col_conf1, col_conf2 = st.columns(2)
+            with col_conf1:
+                if st.button("✅ Evet, Onaylıyorum", type="primary", key="btn_confirm_update"):
+                    st.session_state.confirm_collection_update = False # Reset
+                    st.session_state.update_in_progress = True
+                    # Queue'yu oluştur ve değişkene ata
+                    st.session_state.sync_progress_queue = queue.Queue()
+                    progress_queue = st.session_state.sync_progress_queue
+                    
+                    # Thread için gerekli verileri al
+                    store_url = st.session_state.shopify_store
+                    store_token = st.session_state.shopify_token
+                    
+                    def run_collection_update(q, store, token, col_id, r_type, r_val):
+                        try:
+                            q.put({'progress': 1, 'message': 'İşlem başlatılıyor...'})
+                            
+                            # Importları thread içinde yap
+                            from operations.price_sync import update_collection_custom
+                            from connectors.shopify_api import ShopifyAPI
+                            
+                            q.put({'progress': 2, 'message': 'Shopify bağlantısı kuruluyor...'})
+                            shopify_api = ShopifyAPI(store, token)
+                            
+                            q.put({'progress': 5, 'message': 'Koleksiyon verileri çekiliyor...'})
+                            result = update_collection_custom(
+                                shopify_api, 
+                                col_id, 
+                                r_type, 
+                                r_val, 
+                                progress_queue=q
+                            )
+                            q.put({"status": "done", "results": result})
+                            
+                        except Exception as e:
+                            logging.error(f"Collection update thread error: {e}")
+                            q.put({"status": "error", "message": f"İşlem hatası: {str(e)}"})
+
+                    # Thread'i başlat
+                    threading.Thread(
+                        target=run_collection_update, 
+                        args=(progress_queue, store_url, store_token, selected_collection_id, rule_type[1], rule_value),
+                        daemon=True
+                    ).start()
+                    
+                    st.rerun()
+            
+            with col_conf2:
+                if st.button("❌ İptal", key="btn_cancel_update"):
+                    st.session_state.confirm_collection_update = False
+                    st.rerun()
 
 # Eğer bir işlem devam ediyorsa, ilerlemeyi gösteren alanı oluştur
 if st.session_state.update_in_progress:
