@@ -54,8 +54,12 @@ shopify = ShopifyAPI(keys["shopify_store"], keys["shopify_token"])
 # Session State Başlatma
 if 'all_products' not in st.session_state:
     st.session_state.all_products = [] # Tüm çekilen ürünler
-if 'workspace_products' not in st.session_state:
-    st.session_state.workspace_products = [] # İşlem yapılacak seçili ürünler
+if 'workspace_url' not in st.session_state:
+    st.session_state.workspace_url = [] 
+if 'workspace_content' not in st.session_state:
+    st.session_state.workspace_content = []
+if 'workspace_image' not in st.session_state:
+    st.session_state.workspace_image = []
 if 'ai_results' not in st.session_state:
     st.session_state.ai_results = []
 
@@ -303,18 +307,32 @@ with tab_cockpit:
         # Seçilenleri Çalışma Masasına Aktar
         selected_rows = edited_df[edited_df["Seç"] == True]
         
-        col_action_1, col_action_2 = st.columns([1, 4])
-        with col_action_1:
-            if st.button("Seçilenleri Çalışma Masasına Ekle ➡️"):
-                selected_ids = selected_rows["ID"].tolist()
-                # ID'ye göre orijinal objeleri bul
-                selected_objs = [p for p in st.session_state.all_products if p['id'] in selected_ids]
-                st.session_state.workspace_products = selected_objs
-                st.success(f"{len(selected_objs)} ürün çalışma masasına eklendi!")
+        st.markdown("### 📤 İşlem Seçimi")
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
         
-        with col_action_2:
-            if st.session_state.workspace_products:
-                st.info(f"📂 Çalışma Masasında **{len(st.session_state.workspace_products)}** ürün bekliyor.")
+        selected_ids = selected_rows["ID"].tolist()
+        selected_objs = [p for p in st.session_state.all_products if p['id'] in selected_ids]
+        
+        with col_btn1:
+            if st.button("🔗 URL Yönetimine Gönder", use_container_width=True):
+                st.session_state.workspace_url = selected_objs
+                st.success(f"{len(selected_objs)} ürün URL modülüne aktarıldı!")
+            if st.session_state.workspace_url:
+                st.caption(f"Bekleyen: {len(st.session_state.workspace_url)} ürün")
+
+        with col_btn2:
+            if st.button("📝 İçerik Stüdyosuna Gönder", use_container_width=True):
+                st.session_state.workspace_content = selected_objs
+                st.success(f"{len(selected_objs)} ürün İçerik modülüne aktarıldı!")
+            if st.session_state.workspace_content:
+                st.caption(f"Bekleyen: {len(st.session_state.workspace_content)} ürün")
+
+        with col_btn3:
+            if st.button("🖼️ Görsel SEO'ya Gönder", use_container_width=True):
+                st.session_state.workspace_image = selected_objs
+                st.success(f"{len(selected_objs)} ürün Görsel modülüne aktarıldı!")
+            if st.session_state.workspace_image:
+                st.caption(f"Bekleyen: {len(st.session_state.workspace_image)} ürün")
 
 # ==========================================
 # 2. TAB: URL & YÖNLENDİRME (Smart Redirects)
@@ -322,8 +340,8 @@ with tab_cockpit:
 with tab_url:
     st.header("🔗 Akıllı URL Yönetimi")
     
-    if not st.session_state.workspace_products:
-        st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçin.")
+    if not st.session_state.workspace_url:
+        st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'URL Yönetimine Gönder' butonuna basın.")
     else:
         col_url_settings, col_url_preview = st.columns([1, 2])
         
@@ -348,7 +366,7 @@ with tab_url:
             st.subheader("Önizleme")
             
             preview_data = []
-            for p in st.session_state.workspace_products:
+            for p in st.session_state.workspace_url:
                 old_h = p['handle']
                 mode_key = "clean_only"
                 if handle_mode == "Sayıları Kaldır": mode_key = "remove_numbers"
@@ -380,7 +398,7 @@ with tab_url:
                 for i, row in enumerate(preview_data):
                     if row["Eski URL"] != row["Yeni URL"]:
                         # 1. Ürün Handle Güncelle
-                        p_id = next(p['id'] for p in st.session_state.workspace_products if p['title'] == row["Ürün"])
+                        p_id = next(p['id'] for p in st.session_state.workspace_url if p['title'] == row["Ürün"])
                         
                         mutation = """
                         mutation productUpdate($input: ProductInput!) {
@@ -410,7 +428,7 @@ with tab_url:
                     progress_bar.progress((i + 1) / len(preview_data))
                 
                 st.success(f"İşlem Tamamlandı! {success_count} ürün güncellendi, {redirect_count} yönlendirme oluşturuldu.")
-                st.session_state.workspace_products = [] # Temizle
+                st.session_state.workspace_url = [] # Temizle
 
 # ==========================================
 # 3. TAB: AI İÇERİK STÜDYOSU
@@ -418,8 +436,8 @@ with tab_url:
 with tab_content:
     st.header("📝 AI İçerik Stüdyosu")
     
-    if not st.session_state.workspace_products:
-        st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçin.")
+    if not st.session_state.workspace_content:
+        st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'İçerik Stüdyosuna Gönder' butonuna basın.")
     else:
         col_ai_opts, col_ai_res = st.columns([1, 2])
         
@@ -436,7 +454,7 @@ with tab_content:
                 st.session_state.ai_results = []
                 prog = st.progress(0)
                 
-                for i, p in enumerate(st.session_state.workspace_products):
+                for i, p in enumerate(st.session_state.workspace_content):
                     res = {"id": p['id'], "title": p['title'], "original_desc": p.get('description', '')}
                     
                     full_prompt = f"Ton: {tone}. Anahtar Kelimeler: {keywords}. {custom_prompt}"
@@ -448,7 +466,7 @@ with tab_content:
                         res["new_meta"] = seo_manager.generate_seo_meta(p['title'], p.get('description', ''), full_prompt)
                         
                     st.session_state.ai_results.append(res)
-                    prog.progress((i + 1) / len(st.session_state.workspace_products))
+                    prog.progress((i + 1) / len(st.session_state.workspace_content))
                 st.success("Üretim Tamamlandı!")
 
         with col_ai_res:
@@ -478,14 +496,14 @@ with tab_content:
 with tab_image:
     st.header("🖼️ Görsel SEO (Alt Text)")
     
-    if not st.session_state.workspace_products:
-        st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçin.")
+    if not st.session_state.workspace_image:
+        st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'Görsel SEO'ya Gönder' butonuna basın.")
     else:
         st.info("Seçili ürünlerin görselleri için 'Ürün Adı + Varyant' kombinasyonu ile otomatik Alt Text üretilir.")
         
         if st.button("Alt Metinleri Oluştur ve Önizle"):
             img_preview = []
-            for p in st.session_state.workspace_products:
+            for p in st.session_state.workspace_image:
                 if p.get('featuredImage'):
                     new_alt = f"{p['title']} - Detaylı Görünüm"
                     img_preview.append({
