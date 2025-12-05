@@ -465,9 +465,9 @@ with tab_content:
                         "original_desc": p.get('description', ''),
                         "original_meta_title": p.get('seo', {}).get('title', ''),
                         "original_meta_desc": p.get('seo', {}).get('description', ''),
-                        "new_desc": "",
-                        "new_meta_title": "",
-                        "new_meta_desc": ""
+                        "new_desc": p.get('description', ''),
+                        "new_meta_title": p.get('seo', {}).get('title', ''),
+                        "new_meta_desc": p.get('seo', {}).get('description', '')
                     }
                     
                     full_prompt = f"Ton: {tone}. Anahtar Kelimeler: {keywords}. {custom_prompt}"
