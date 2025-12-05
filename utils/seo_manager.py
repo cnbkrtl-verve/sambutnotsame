@@ -136,11 +136,13 @@ class SEOManager:
             
         elif mode == "remove_words" and remove_words:
             # Belirli kelimeleri çıkar
-            words = [w.strip() for w in remove_words.split(',')]
+            # Kullanıcı "kelime-" şeklinde girse bile tireleri temizleyip işlem yapıyoruz
+            words = [w.strip().strip('-') for w in remove_words.split(',')]
             for word in words:
                 if word:
                     # Kelimeyi tam eşleşme veya tireler arasında bul
-                    pattern = re.compile(rf'(-|^){re.escape(word)}(-|$)')
+                    # Case-insensitive (büyük/küçük harf duyarsız) yapıyoruz
+                    pattern = re.compile(rf'(-|^){re.escape(word)}(-|$)', re.IGNORECASE)
                     new_handle = pattern.sub('-', new_handle)
             new_handle = re.sub(r'-+', '-', new_handle).strip('-')
             
