@@ -258,10 +258,18 @@ with tab_cockpit:
         with col_search:
             search_term = st.text_input("Ara (Ürün Adı, SKU veya Handle)", placeholder="Örn: elbise")
         
+        with col_filter:
+            st.write("") # Hizalama için boşluk
+            st.write("")
+            select_all = st.checkbox("Listelenen Tümünü Seç", value=False, help="Aşağıdaki listede görünen tüm ürünleri seçili hale getirir.")
+        
         if search_term:
             df = df[df['Ürün Adı'].str.contains(search_term, case=False) | 
                    df['SKU'].str.contains(search_term, case=False) |
                    df['Handle'].str.contains(search_term, case=False)]
+        
+        if select_all:
+            df["Seç"] = True
 
         # Data Editor ile Seçim
         edited_df = st.data_editor(
