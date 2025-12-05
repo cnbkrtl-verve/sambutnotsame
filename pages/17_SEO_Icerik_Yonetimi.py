@@ -106,6 +106,11 @@ def fetch_products_recursive(limit=None):
                         title
                         handle
                         description
+                        tags
+                        seo {
+                            title
+                            description
+                        }
                         featuredImage {
                             id
                             altText
@@ -126,10 +131,11 @@ def fetch_products_recursive(limit=None):
         """
         variables = {"cursor": cursor}
         try:
+            # execute_graphql zaten 'data' kısmını döndürüyor
             result = shopify.execute_graphql(query, variables)
             
-            if result and 'data' in result and result['data']['products']:
-                data = result['data']['products']
+            if result and 'products' in result:
+                data = result['products']
                 new_products = [edge['node'] for edge in data['edges']]
                 products.extend(new_products)
                 
@@ -140,9 +146,8 @@ def fetch_products_recursive(limit=None):
                     products = products[:limit]
                     break
             else:
+                # Eğer result boşsa veya products yoksa
                 st.error(f"API Yanıtı Beklenmedik Format: {result}")
-                if result and 'errors' in result:
-                    st.error(f"GraphQL Hatası: {result['errors']}")
                 break
         except Exception as e:
             st.error(f"Bağlantı Hatası: {str(e)}")
@@ -226,15 +231,24 @@ with tab_cockpit:
         # DataFrame Hazırlığı
         df_data = []
         for p in st.session_state.all_products:
+            img_url = p['featuredImage']['url'] if p.get('featuredImage') else ""
             img_alt = p['featuredImage']['altText'] if p.get('featuredImage') else ""
             sku = p['variants']['edges'][0]['node']['sku'] if p['variants']['edges'] else ""
+            seo_title = p.get('seo', {}).get('title', '') if p.get('seo') else ""
+            seo_desc = p.get('seo', {}).get('description', '') if p.get('seo') else ""
+            tags = ", ".join(p.get('tags', []))
+            
             df_data.append({
-                "ID": p['id'],
+                "Seç": False,
+                "Görsel": img_url,
                 "Ürün Adı": p['title'],
                 "SKU": sku,
                 "Handle": p['handle'],
-                "Mevcut Alt Text": img_alt,
-                "Seç": False
+                "Alt Text": img_alt,
+                "SEO Başlık": seo_title,
+                "SEO Açıklama": seo_desc,
+                "Etiketler": tags,
+                "ID": p['id']
             })
         
         df = pd.DataFrame(df_data)
@@ -254,15 +268,28 @@ with tab_cockpit:
             df,
             column_config={
                 "Seç": st.column_config.CheckboxColumn(
-                    "İşlem İçin Seç",
-                    help="Bu ürünleri diğer sekmelerde düzenlemek için seçin.",
+                    "Seç",
+                    help="İşlem yapılacak ürünleri seçin",
                     default=False,
+                    width="small"
                 ),
+                "Görsel": st.column_config.ImageColumn(
+                    "Görsel",
+                    help="Ürün ana görseli",
+                    width="small"
+                ),
+                "Ürün Adı": st.column_config.TextColumn("Ürün Adı", width="medium"),
+                "SKU": st.column_config.TextColumn("SKU", width="small"),
+                "Handle": st.column_config.TextColumn("Handle", width="medium"),
+                "Alt Text": st.column_config.TextColumn("Alt Text", width="medium"),
+                "SEO Başlık": st.column_config.TextColumn("SEO Başlık", width="medium"),
+                "SEO Açıklama": st.column_config.TextColumn("SEO Açıklama", width="large"),
+                "Etiketler": st.column_config.TextColumn("Etiketler", width="medium"),
                 "ID": None # ID'yi gizle
             },
             hide_index=True,
             use_container_width=True,
-            height=400
+            height=600
         )
         
         # Seçilenleri Çalışma Masasına Aktar
