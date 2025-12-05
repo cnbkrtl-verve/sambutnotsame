@@ -19,7 +19,11 @@ def load_all_user_keys(username):
         "sentos_api_key": st.secrets.get("SENTOS_API_KEY"),
         "sentos_api_secret": st.secrets.get("SENTOS_API_SECRET"),
         "sentos_cookie": st.secrets.get("SENTOS_COOKIE"),
-        "gcp_service_account_json": st.secrets.get("GCP_SERVICE_ACCOUNT_JSON")
+        "gcp_service_account_json": st.secrets.get("GCP_SERVICE_ACCOUNT_JSON"),
+        # AI Configuration
+        "ai_api_key": st.secrets.get("AI_API_KEY"),
+        "ai_api_base": st.secrets.get("AI_API_BASE", "https://api.gptproto.com/v1"), # Default to GPTProto if not set
+        "ai_model": st.secrets.get("AI_MODEL", "gpt-4o")
     }
 
 # Not: save_user_keys fonksiyonu artık gerekli değil çünkü sırlar Streamlit arayüzünden yönetilecek.
