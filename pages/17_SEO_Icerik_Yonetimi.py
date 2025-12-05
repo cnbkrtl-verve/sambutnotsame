@@ -115,6 +115,10 @@ def fetch_products_recursive(limit=None):
                             title
                             description
                         }
+                        options {
+                            name
+                            values
+                        }
                         featuredImage {
                             id
                             altText
@@ -439,7 +443,7 @@ with tab_content:
     if not st.session_state.workspace_content:
         st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'İçerik Stüdyosuna Gönder' butonuna basın.")
     else:
-        col_ai_opts, col_ai_res = st.columns([1, 2])
+        col_ai_opts, col_ai_res = st.columns([1, 3])
         
         with col_ai_opts:
             st.subheader("İçerik Ayarları")
@@ -455,7 +459,16 @@ with tab_content:
                 prog = st.progress(0)
                 
                 for i, p in enumerate(st.session_state.workspace_content):
-                    res = {"id": p['id'], "title": p['title'], "original_desc": p.get('description', '')}
+                    res = {
+                        "id": p['id'], 
+                        "title": p['title'], 
+                        "original_desc": p.get('description', ''),
+                        "original_meta_title": p.get('seo', {}).get('title', ''),
+                        "original_meta_desc": p.get('seo', {}).get('description', ''),
+                        "new_desc": "",
+                        "new_meta_title": "",
+                        "new_meta_desc": ""
+                    }
                     
                     full_prompt = f"Ton: {tone}. Anahtar Kelimeler: {keywords}. {custom_prompt}"
                     
@@ -463,32 +476,68 @@ with tab_content:
                         res["new_desc"] = seo_manager.generate_product_description(p['title'], p.get('description', ''), "Detaylar...", full_prompt)
                     
                     if "Meta Title & Description" in target_type:
-                        res["new_meta"] = seo_manager.generate_seo_meta(p['title'], p.get('description', ''), full_prompt)
+                        # Meta çıktısını parse etmemiz gerekebilir, şimdilik düz metin olarak alıyoruz
+                        meta_text = seo_manager.generate_seo_meta(p['title'], p.get('description', ''), full_prompt)
+                        # Basit parsing denemesi
+                        if "Title:" in meta_text and "Description:" in meta_text:
+                            try:
+                                parts = meta_text.split("Description:")
+                                res["new_meta_title"] = parts[0].replace("Title:", "").strip()
+                                res["new_meta_desc"] = parts[1].strip()
+                            except:
+                                res["new_meta_desc"] = meta_text
+                        else:
+                            res["new_meta_desc"] = meta_text
                         
                     st.session_state.ai_results.append(res)
                     prog.progress((i + 1) / len(st.session_state.workspace_content))
                 st.success("Üretim Tamamlandı!")
 
         with col_ai_res:
-            st.subheader("Sonuçlar ve Karşılaştırma")
+            st.subheader("Canlı Önizleme ve Düzenleme")
+            
+            # Veri hazırlığı
             if st.session_state.ai_results:
-                for res in st.session_state.ai_results:
-                    with st.expander(f"📄 {res['title']}", expanded=True):
-                        c1, c2 = st.columns(2)
-                        
-                        if "new_desc" in res:
-                            with c1:
-                                st.caption("Mevcut Açıklama")
-                                st.text_area("Eski", res["original_desc"], height=150, disabled=True, key=f"old_{res['id']}")
-                            with c2:
-                                st.caption("AI Önerisi")
-                                st.text_area("Yeni", res["new_desc"], height=150, key=f"new_{res['id']}")
-                        
-                        if "new_meta" in res:
-                            st.info("Meta Önerisi:\n" + res["new_meta"])
-                
-                if st.button("Tümünü Kaydet (Shopify)", type="primary"):
-                    st.info("Kaydetme işlemi simüle edildi. (GraphQL entegrasyonu eklenecek)")
+                # AI sonuçları varsa onları kullan
+                display_data = st.session_state.ai_results
+            else:
+                # Yoksa mevcut verileri göster (boş yeni alanlarla)
+                display_data = []
+                for p in st.session_state.workspace_content:
+                    display_data.append({
+                        "id": p['id'],
+                        "title": p['title'],
+                        "original_desc": p.get('description', ''),
+                        "original_meta_title": p.get('seo', {}).get('title', ''),
+                        "original_meta_desc": p.get('seo', {}).get('description', ''),
+                        "new_desc": p.get('description', ''), # Başlangıçta eskisiyle aynı
+                        "new_meta_title": p.get('seo', {}).get('title', ''),
+                        "new_meta_desc": p.get('seo', {}).get('description', '')
+                    })
+
+            df_content = pd.DataFrame(display_data)
+            
+            # Data Editor
+            edited_content = st.data_editor(
+                df_content,
+                column_config={
+                    "title": st.column_config.TextColumn("Ürün Adı", disabled=True, width="medium"),
+                    "new_desc": st.column_config.TextColumn("Yeni Açıklama", width="large"),
+                    "new_meta_title": st.column_config.TextColumn("Yeni Meta Başlık", width="medium"),
+                    "new_meta_desc": st.column_config.TextColumn("Yeni Meta Açıklama", width="large"),
+                    "original_desc": None, # Gizle
+                    "original_meta_title": None,
+                    "original_meta_desc": None,
+                    "id": None
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=500,
+                key="editor_content"
+            )
+            
+            if st.button("Tümünü Kaydet (Shopify)", type="primary"):
+                st.info("Kaydetme işlemi simüle edildi. (GraphQL entegrasyonu eklenecek)")
 
 # ==========================================
 # 4. TAB: GÖRSEL SEO
@@ -499,19 +548,58 @@ with tab_image:
     if not st.session_state.workspace_image:
         st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'Görsel SEO'ya Gönder' butonuna basın.")
     else:
-        st.info("Seçili ürünlerin görselleri için 'Ürün Adı + Varyant' kombinasyonu ile otomatik Alt Text üretilir.")
+        st.info("Seçili ürünlerin görselleri için 'Ürün Adı + Renk' kombinasyonu ile otomatik Alt Text üretilir.")
         
-        if st.button("Alt Metinleri Oluştur ve Önizle"):
-            img_preview = []
-            for p in st.session_state.workspace_image:
-                if p.get('featuredImage'):
-                    new_alt = f"{p['title']} - Detaylı Görünüm"
-                    img_preview.append({
-                        "Ürün": p['title'],
-                        "Görsel ID": p['featuredImage']['id'],
-                        "Mevcut Alt": p['featuredImage']['altText'],
-                        "Yeni Alt": new_alt
-                    })
-            
-            st.dataframe(pd.DataFrame(img_preview), use_container_width=True)
-            st.button("Görsel SEO'yu Uygula", type="primary")
+        col_img_act, col_img_table = st.columns([1, 3])
+        
+        with col_img_act:
+            if st.button("Alt Metinleri Oluştur", type="primary"):
+                img_preview = []
+                for p in st.session_state.workspace_image:
+                    if p.get('featuredImage'):
+                        # Renk bulma mantığı
+                        color_val = ""
+                        if 'options' in p:
+                            for opt in p['options']:
+                                if opt['name'].lower() in ['renk', 'color', 'colour']:
+                                    # İlk rengi alıyoruz (genellikle ana varyant)
+                                    if opt['values']:
+                                        color_val = opt['values'][0]
+                                    break
+                        
+                        # Renk varsa ekle, yoksa sadece ürün adı
+                        suffix = f" - {color_val}" if color_val else ""
+                        new_alt = f"{p['title']}{suffix} - Detaylı Görünüm"
+                        
+                        img_preview.append({
+                            "Görsel": p['featuredImage']['url'],
+                            "Ürün": p['title'],
+                            "Renk": color_val,
+                            "Mevcut Alt": p['featuredImage']['altText'],
+                            "Yeni Alt": new_alt,
+                            "id": p['id']
+                        })
+                st.session_state.img_preview_data = img_preview
+                st.success("Alt metinler oluşturuldu!")
+
+        with col_img_table:
+            if 'img_preview_data' in st.session_state:
+                df_img = pd.DataFrame(st.session_state.img_preview_data)
+                
+                edited_img = st.data_editor(
+                    df_img,
+                    column_config={
+                        "Görsel": st.column_config.ImageColumn("Görsel", width="small"),
+                        "Ürün": st.column_config.TextColumn("Ürün", disabled=True, width="medium"),
+                        "Renk": st.column_config.TextColumn("Renk", disabled=True, width="small"),
+                        "Mevcut Alt": st.column_config.TextColumn("Mevcut Alt", disabled=True, width="medium"),
+                        "Yeni Alt": st.column_config.TextColumn("Yeni Alt (Düzenlenebilir)", width="large"),
+                        "id": None
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=500
+                )
+                
+                if st.button("Görsel SEO'yu Uygula (Kaydet)", type="primary"):
+                     st.info("Kaydetme işlemi simüle edildi.")
