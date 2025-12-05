@@ -92,9 +92,10 @@ def fetch_products_recursive(limit=None):
     while has_next:
         status_text.text(f"Ürünler çekiliyor... Toplam: {len(products)}")
         
+        # Query complexity düşürüldü (250 -> 50) ve hata yönetimi eklendi
         query = """
         query ($cursor: String) {
-            products(first: 250, after: $cursor) {
+            products(first: 50, after: $cursor) {
                 pageInfo {
                     hasNextPage
                     endCursor
@@ -124,23 +125,30 @@ def fetch_products_recursive(limit=None):
         }
         """
         variables = {"cursor": cursor}
-        result = shopify.execute_graphql(query, variables)
-        
-        if result and 'data' in result:
-            data = result['data']['products']
-            new_products = [edge['node'] for edge in data['edges']]
-            products.extend(new_products)
+        try:
+            result = shopify.execute_graphql(query, variables)
             
-            has_next = data['pageInfo']['hasNextPage']
-            cursor = data['pageInfo']['endCursor']
-            
-            if limit and len(products) >= limit:
-                products = products[:limit]
+            if result and 'data' in result and result['data']['products']:
+                data = result['data']['products']
+                new_products = [edge['node'] for edge in data['edges']]
+                products.extend(new_products)
+                
+                has_next = data['pageInfo']['hasNextPage']
+                cursor = data['pageInfo']['endCursor']
+                
+                if limit and len(products) >= limit:
+                    products = products[:limit]
+                    break
+            else:
+                st.error(f"API Yanıtı Beklenmedik Format: {result}")
+                if result and 'errors' in result:
+                    st.error(f"GraphQL Hatası: {result['errors']}")
                 break
-        else:
+        except Exception as e:
+            st.error(f"Bağlantı Hatası: {str(e)}")
             break
             
-        # İlerleme çubuğu simülasyonu (tam sayı bilinmediği için döngüsel)
+        # İlerleme çubuğu simülasyonu
         progress_bar.progress((len(products) % 100) / 100)
         
     progress_bar.empty()
