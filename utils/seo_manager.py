@@ -106,7 +106,9 @@ class SEOManager:
         Ek Talimatlar: {custom_prompt}
         """
         
-        return self.generate_text(system_prompt, user_content, image_url=image_url)
+        response = self.generate_text(system_prompt, user_content, image_url=image_url)
+        # Markdown code block temizliği (```html ve ``` işaretlerini kaldır)
+        return response.replace("```html", "").replace("```", "").strip()
 
     def generate_seo_meta(self, product_name, description, custom_prompt, image_url=None):
         """
