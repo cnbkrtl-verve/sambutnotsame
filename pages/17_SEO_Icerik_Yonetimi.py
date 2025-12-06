@@ -471,7 +471,13 @@ with tab_cockpit:
 # 2. TAB: URL & YÖNLENDİRME (Smart Redirects)
 # ==========================================
 with tab_url:
-    st.header("🔗 Akıllı URL Yönetimi")
+    col_header, col_clear = st.columns([4, 1])
+    with col_header:
+        st.header("🔗 Akıllı URL Yönetimi")
+    with col_clear:
+        if st.button("🗑️ Listeyi Temizle", key="clear_url"):
+            st.session_state.workspace_url = []
+            st.rerun()
     
     if not st.session_state.workspace_url:
         st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'URL Yönetimine Gönder' butonuna basın.")
@@ -567,7 +573,14 @@ with tab_url:
 # 3. TAB: AI İÇERİK STÜDYOSU
 # ==========================================
 with tab_content:
-    st.header("📝 AI İçerik Stüdyosu")
+    col_header, col_clear = st.columns([4, 1])
+    with col_header:
+        st.header("📝 AI İçerik Stüdyosu")
+    with col_clear:
+        if st.button("🗑️ Listeyi Temizle", key="clear_content"):
+            st.session_state.workspace_content = []
+            st.session_state.ai_results = []
+            st.rerun()
     
     if not st.session_state.workspace_content:
         st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'İçerik Stüdyosuna Gönder' butonuna basın.")
@@ -790,7 +803,15 @@ with tab_content:
 # 4. TAB: GÖRSEL SEO
 # ==========================================
 with tab_image:
-    st.header("🖼️ Görsel SEO (Alt Text)")
+    col_header, col_clear = st.columns([4, 1])
+    with col_header:
+        st.header("🖼️ Görsel SEO (Alt Text)")
+    with col_clear:
+        if st.button("🗑️ Listeyi Temizle", key="clear_image"):
+            st.session_state.workspace_image = []
+            if 'img_preview_data' in st.session_state:
+                del st.session_state.img_preview_data
+            st.rerun()
     
     if not st.session_state.workspace_image:
         st.warning("Lütfen önce 'Ürün Kokpiti' sekmesinden ürün seçip 'Görsel SEO'ya Gönder' butonuna basın.")
