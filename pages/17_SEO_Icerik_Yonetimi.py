@@ -4,6 +4,7 @@ from connectors.shopify_api import ShopifyAPI
 from config_manager import load_all_user_keys
 from utils.seo_manager import SEOManager
 import time
+import concurrent.futures
 
 st.set_page_config(page_title="SEO Operasyon Merkezi", layout="wide", page_icon="🚀")
 
@@ -169,6 +170,110 @@ def fetch_products_recursive(limit=None):
     status_text.empty()
     return products
 
+def fetch_collections():
+    """Mağazadaki koleksiyonları (kategorileri) çeker."""
+    query = """
+    {
+        collections(first: 250) {
+            edges {
+                node {
+                    id
+                    title
+                }
+            }
+        }
+    }
+    """
+    try:
+        result = shopify.execute_graphql(query)
+        if result and 'collections' in result:
+            return [edge['node'] for edge in result['collections']['edges']]
+    except Exception as e:
+        st.error(f"Koleksiyonlar çekilemedi: {e}")
+    return []
+
+def fetch_products_by_collection(collection_id, limit=None):
+    """Belirli bir koleksiyondaki ürünleri çeker."""
+    products = []
+    cursor = None
+    has_next = True
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    while has_next:
+        status_text.text(f"Koleksiyon ürünleri çekiliyor... Toplam: {len(products)}")
+        
+        query = """
+        query ($id: ID!, $cursor: String) {
+            collection(id: $id) {
+                products(first: 50, after: $cursor) {
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
+                    edges {
+                        node {
+                            id
+                            title
+                            handle
+                            description
+                            descriptionHtml
+                            tags
+                            seo {
+                                title
+                                description
+                            }
+                            options {
+                                name
+                                values
+                            }
+                            featuredImage {
+                                id
+                                altText
+                                url
+                            }
+                            variants(first: 1) {
+                                edges {
+                                    node {
+                                        sku
+                                        price
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+        variables = {"id": collection_id, "cursor": cursor}
+        try:
+            result = shopify.execute_graphql(query, variables)
+            
+            if result and 'collection' in result and result['collection'] and 'products' in result['collection']:
+                data = result['collection']['products']
+                new_products = [edge['node'] for edge in data['edges']]
+                products.extend(new_products)
+                
+                has_next = data['pageInfo']['hasNextPage']
+                cursor = data['pageInfo']['endCursor']
+                
+                if limit and len(products) >= limit:
+                    products = products[:limit]
+                    break
+            else:
+                break
+        except Exception as e:
+            st.error(f"Bağlantı Hatası: {str(e)}")
+            break
+            
+        progress_bar.progress((len(products) % 100) / 100)
+        
+    progress_bar.empty()
+    status_text.empty()
+    return products
+
 def create_redirect(path, target):
     """301 Yönlendirmesi oluşturur."""
     mutation = """
@@ -212,13 +317,31 @@ with tab_cockpit:
     
     with col_fetch:
         st.subheader("Veri Kaynağı")
-        fetch_mode = st.radio("Çekim Modu", ["İlk 50 Ürün (Hızlı)", "İlk 250 Ürün", "Tüm Mağaza (Yavaş)"])
+        fetch_source = st.radio("Kaynak Seçimi", ["Genel Çekim", "Kategori Bazlı"])
         
-        limit_map = {"İlk 50 Ürün (Hızlı)": 50, "İlk 250 Ürün": 250, "Tüm Mağaza (Yavaş)": None}
-        
-        if st.button("Ürünleri Getir / Yenile", type="primary"):
-            st.session_state.all_products = fetch_products_recursive(limit=limit_map[fetch_mode])
-            st.success(f"{len(st.session_state.all_products)} ürün başarıyla çekildi.")
+        if fetch_source == "Genel Çekim":
+            fetch_mode = st.selectbox("Limit", ["İlk 50 Ürün (Hızlı)", "İlk 250 Ürün", "Tüm Mağaza (Yavaş)"])
+            limit_map = {"İlk 50 Ürün (Hızlı)": 50, "İlk 250 Ürün": 250, "Tüm Mağaza (Yavaş)": None}
+            
+            if st.button("Ürünleri Getir / Yenile", type="primary"):
+                st.session_state.all_products = fetch_products_recursive(limit=limit_map[fetch_mode])
+                st.success(f"{len(st.session_state.all_products)} ürün başarıyla çekildi.")
+        else:
+            # Kategori Bazlı
+            if 'collections_list' not in st.session_state:
+                with st.spinner("Kategoriler yükleniyor..."):
+                    st.session_state.collections_list = fetch_collections()
+            
+            if st.session_state.collections_list:
+                coll_options = {c['title']: c['id'] for c in st.session_state.collections_list}
+                selected_coll_name = st.selectbox("Kategori Seçin", list(coll_options.keys()))
+                
+                if st.button("Kategori Ürünlerini Getir", type="primary"):
+                    coll_id = coll_options[selected_coll_name]
+                    st.session_state.all_products = fetch_products_by_collection(coll_id)
+                    st.success(f"{len(st.session_state.all_products)} ürün başarıyla çekildi.")
+            else:
+                st.error("Kategoriler yüklenemedi veya bulunamadı.")
 
     with col_stats:
         if st.session_state.all_products:
@@ -461,11 +584,15 @@ with tab_content:
             use_image_analysis = st.checkbox("📸 Görsel Analizi Kullan", value=True, help="Ürün görselini de AI'a göndererek daha detaylı içerik üretilmesini sağlar.")
             custom_prompt = st.text_area("Ek Talimatlar", "Özellikleri madde madde yaz, SEO uyumlu olsun.")
             
-            if st.button("✨ İçerik Üret", type="primary"):
+            if st.button("✨ İçerik Üret (Hızlı)", type="primary"):
                 st.session_state.ai_results = []
                 prog = st.progress(0)
+                status_text = st.empty()
                 
-                for i, p in enumerate(st.session_state.workspace_content):
+                total_items = len(st.session_state.workspace_content)
+                completed_items = 0
+                
+                def process_product_ai(p):
                     # HTML içeriği tercih et, yoksa normal description'ı al
                     current_desc = p.get('descriptionHtml', p.get('description', ''))
                     
@@ -510,10 +637,26 @@ with tab_content:
                                 res["new_meta_desc"] = meta_text
                         else:
                             res["new_meta_desc"] = meta_text
-                        
-                    st.session_state.ai_results.append(res)
-                    prog.progress((i + 1) / len(st.session_state.workspace_content))
+                    return res
+
+                # ThreadPool ile paralel işlem (Max 5 worker)
+                results = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    future_to_product = {executor.submit(process_product_ai, p): p for p in st.session_state.workspace_content}
+                    
+                    for future in concurrent.futures.as_completed(future_to_product):
+                        try:
+                            data = future.result()
+                            results.append(data)
+                            completed_items += 1
+                            prog.progress(completed_items / total_items)
+                            status_text.text(f"İşleniyor: {completed_items}/{total_items}")
+                        except Exception as exc:
+                            st.error(f"Bir ürün işlenirken hata oluştu: {exc}")
+                
+                st.session_state.ai_results = results
                 st.success("Üretim Tamamlandı!")
+                status_text.empty()
 
         with col_ai_res:
             st.subheader("Canlı Önizleme ve Düzenleme")
