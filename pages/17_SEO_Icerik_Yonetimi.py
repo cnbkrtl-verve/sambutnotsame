@@ -585,78 +585,92 @@ with tab_content:
             custom_prompt = st.text_area("Ek Talimatlar", "Özellikleri madde madde yaz, SEO uyumlu olsun.")
             
             if st.button("✨ İçerik Üret (Hızlı)", type="primary"):
-                st.session_state.ai_results = []
-                prog = st.progress(0)
-                status_text = st.empty()
-                
-                total_items = len(st.session_state.workspace_content)
-                completed_items = 0
-                
-                def process_product_ai(p):
-                    # HTML içeriği tercih et, yoksa normal description'ı al
-                    current_desc = p.get('descriptionHtml', p.get('description', ''))
+                if not target_type:
+                    st.error("Lütfen en az bir üretim alanı seçin.")
+                else:
+                    st.session_state.ai_results = []
+                    prog = st.progress(0)
+                    status_text = st.empty()
                     
-                    res = {
-                        "id": p['id'], 
-                        "title": p['title'], 
-                        "original_desc": current_desc,
-                        "original_meta_title": p.get('seo', {}).get('title', ''),
-                        "original_meta_desc": p.get('seo', {}).get('description', ''),
-                        "new_desc": current_desc,
-                        "new_meta_title": p.get('seo', {}).get('title', ''),
-                        "new_meta_desc": p.get('seo', {}).get('description', '')
-                    }
+                    total_items = len(st.session_state.workspace_content)
+                    completed_items = 0
                     
-                    full_prompt = f"Ton: {tone}. Anahtar Kelimeler: {keywords}. {custom_prompt}"
-                    img_url = p.get('featuredImage', {}).get('url') if use_image_analysis and p.get('featuredImage') else None
+                    # Thread içinde kullanmak için değişkenleri kopyala
+                    current_target_type = target_type
+                    current_tone = tone
+                    current_keywords = keywords
+                    current_prompt = custom_prompt
+                    current_use_image = use_image_analysis
                     
-                    if "Ürün Açıklaması" in target_type:
-                        res["new_desc"] = seo_manager.generate_product_description(
-                            p['title'], 
-                            current_desc, 
-                            "Detaylar...", 
-                            full_prompt,
-                            image_url=img_url
-                        )
-                    
-                    if "Meta Title & Description" in target_type:
-                        # Meta çıktısını parse etmemiz gerekebilir, şimdilik düz metin olarak alıyoruz
-                        meta_text = seo_manager.generate_seo_meta(
-                            p['title'], 
-                            current_desc, 
-                            full_prompt,
-                            image_url=img_url
-                        )
-                        # Basit parsing denemesi
-                        if "Title:" in meta_text and "Description:" in meta_text:
-                            try:
-                                parts = meta_text.split("Description:")
-                                res["new_meta_title"] = parts[0].replace("Title:", "").strip()
-                                res["new_meta_desc"] = parts[1].strip()
-                            except:
+                    def process_product_ai(p):
+                        # HTML içeriği tercih et, yoksa normal description'ı al
+                        current_desc = p.get('descriptionHtml', p.get('description', ''))
+                        
+                        res = {
+                            "id": p['id'], 
+                            "title": p['title'], 
+                            "original_desc": current_desc,
+                            "original_meta_title": p.get('seo', {}).get('title', ''),
+                            "original_meta_desc": p.get('seo', {}).get('description', ''),
+                            "new_desc": current_desc, # Varsayılan olarak değişmez
+                            "new_meta_title": p.get('seo', {}).get('title', ''),
+                            "new_meta_desc": p.get('seo', {}).get('description', '')
+                        }
+                        
+                        full_prompt = f"Ton: {current_tone}. Anahtar Kelimeler: {current_keywords}. {current_prompt}"
+                        img_url = p.get('featuredImage', {}).get('url') if current_use_image and p.get('featuredImage') else None
+                        
+                        # 1. Ürün Açıklaması Üretimi
+                        if "Ürün Açıklaması" in current_target_type:
+                            res["new_desc"] = seo_manager.generate_product_description(
+                                p['title'], 
+                                current_desc, 
+                                "Detaylar...", 
+                                full_prompt,
+                                image_url=img_url
+                            )
+                        
+                        # 2. Meta Title & Description Üretimi
+                        if "Meta Title & Description" in current_target_type:
+                            meta_text = seo_manager.generate_seo_meta(
+                                p['title'], 
+                                current_desc, 
+                                full_prompt,
+                                image_url=img_url
+                            )
+                            
+                            # Parsing: Title: ... Description: ...
+                            if "Title:" in meta_text and "Description:" in meta_text:
+                                try:
+                                    parts = meta_text.split("Description:")
+                                    res["new_meta_title"] = parts[0].replace("Title:", "").strip()
+                                    res["new_meta_desc"] = parts[1].strip()
+                                except:
+                                    res["new_meta_desc"] = meta_text
+                            else:
+                                # Format tutmazsa description'a bas
                                 res["new_meta_desc"] = meta_text
-                        else:
-                            res["new_meta_desc"] = meta_text
-                    return res
+                                
+                        return res
 
-                # ThreadPool ile paralel işlem (Max 5 worker)
-                results = []
-                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                    future_to_product = {executor.submit(process_product_ai, p): p for p in st.session_state.workspace_content}
+                    # ThreadPool ile paralel işlem (Max 5 worker)
+                    results = []
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                        future_to_product = {executor.submit(process_product_ai, p): p for p in st.session_state.workspace_content}
+                        
+                        for future in concurrent.futures.as_completed(future_to_product):
+                            try:
+                                data = future.result()
+                                results.append(data)
+                                completed_items += 1
+                                prog.progress(completed_items / total_items)
+                                status_text.text(f"İşleniyor: {completed_items}/{total_items}")
+                            except Exception as exc:
+                                st.error(f"Bir ürün işlenirken hata oluştu: {exc}")
                     
-                    for future in concurrent.futures.as_completed(future_to_product):
-                        try:
-                            data = future.result()
-                            results.append(data)
-                            completed_items += 1
-                            prog.progress(completed_items / total_items)
-                            status_text.text(f"İşleniyor: {completed_items}/{total_items}")
-                        except Exception as exc:
-                            st.error(f"Bir ürün işlenirken hata oluştu: {exc}")
-                
-                st.session_state.ai_results = results
-                st.success("Üretim Tamamlandı!")
-                status_text.empty()
+                    st.session_state.ai_results = results
+                    st.success("Üretim Tamamlandı!")
+                    status_text.empty()
 
         with col_ai_res:
             st.subheader("Canlı Önizleme ve Düzenleme")

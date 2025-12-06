@@ -117,11 +117,16 @@ class SEOManager:
         system_prompt = "Sen bir SEO uzmanısın. Google arama sonuçları için en uygun başlık ve açıklamaları yazarsın."
         
         user_content = f"""
-        Aşağıdaki ürün için Meta Title (max 60 karakter) ve Meta Description (max 160 karakter) oluştur.
-        Çıktıyı şu formatta ver:
+        Aşağıdaki ürün için Meta Title ve Meta Description oluştur.
+        
+        KURALLAR:
+        1. Meta Title: Maksimum 70 karakter olmalı. İlgi çekici ve anahtar kelime odaklı olsun.
+        2. Meta Description: Maksimum 160 karakter olmalı. Tıklamaya teşvik edici olsun.
+        3. Çıktı Formatı: Sadece aşağıdaki formatı kullan:
         Title: [Başlık]
         Description: [Açıklama]
         
+        ÜRÜN BİLGİSİ:
         Ürün Adı: {product_name}
         Ürün İçeriği: {description[:500]}...
         
