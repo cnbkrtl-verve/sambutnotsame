@@ -110,6 +110,7 @@ def fetch_products_recursive(limit=None):
                         title
                         handle
                         description
+                        descriptionHtml
                         tags
                         seo {
                             title
@@ -465,13 +466,16 @@ with tab_content:
                 prog = st.progress(0)
                 
                 for i, p in enumerate(st.session_state.workspace_content):
+                    # HTML içeriği tercih et, yoksa normal description'ı al
+                    current_desc = p.get('descriptionHtml', p.get('description', ''))
+                    
                     res = {
                         "id": p['id'], 
                         "title": p['title'], 
-                        "original_desc": p.get('description', ''),
+                        "original_desc": current_desc,
                         "original_meta_title": p.get('seo', {}).get('title', ''),
                         "original_meta_desc": p.get('seo', {}).get('description', ''),
-                        "new_desc": p.get('description', ''),
+                        "new_desc": current_desc,
                         "new_meta_title": p.get('seo', {}).get('title', ''),
                         "new_meta_desc": p.get('seo', {}).get('description', '')
                     }
@@ -482,7 +486,7 @@ with tab_content:
                     if "Ürün Açıklaması" in target_type:
                         res["new_desc"] = seo_manager.generate_product_description(
                             p['title'], 
-                            p.get('description', ''), 
+                            current_desc, 
                             "Detaylar...", 
                             full_prompt,
                             image_url=img_url
@@ -492,7 +496,7 @@ with tab_content:
                         # Meta çıktısını parse etmemiz gerekebilir, şimdilik düz metin olarak alıyoruz
                         meta_text = seo_manager.generate_seo_meta(
                             p['title'], 
-                            p.get('description', ''), 
+                            current_desc, 
                             full_prompt,
                             image_url=img_url
                         )
@@ -522,13 +526,14 @@ with tab_content:
                 # Yoksa mevcut verileri göster (boş yeni alanlarla)
                 display_data = []
                 for p in st.session_state.workspace_content:
+                    current_desc = p.get('descriptionHtml', p.get('description', ''))
                     display_data.append({
                         "id": p['id'],
                         "title": p['title'],
-                        "original_desc": p.get('description', ''),
+                        "original_desc": current_desc,
                         "original_meta_title": p.get('seo', {}).get('title', ''),
                         "original_meta_desc": p.get('seo', {}).get('description', ''),
-                        "new_desc": p.get('description', ''), # Başlangıçta eskisiyle aynı
+                        "new_desc": current_desc, # Başlangıçta eskisiyle aynı
                         "new_meta_title": p.get('seo', {}).get('title', ''),
                         "new_meta_desc": p.get('seo', {}).get('description', '')
                     })
