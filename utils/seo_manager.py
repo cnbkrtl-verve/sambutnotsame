@@ -90,12 +90,8 @@ class SEOManager:
         Manken Boyu: [Değer]<br>
         Manken Ağırlığı: [Değer]<br>
         Ürün Boyu: [Değer]<br>
-        Göğüs: [Değer]<br>
-        Bel: [Değer]<br>
-        Basen: [Değer]<br>
         Kumaş İçeriği: [Değer]<br>
         Kumaş Türü: [Değer]<br>
-        Yıkama: [Değer]<br>
         Model Detayı: [Değer]<br>
         <br>
         <p>
