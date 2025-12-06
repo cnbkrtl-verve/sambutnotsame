@@ -57,51 +57,54 @@ class SEOManager:
         """
         Ürün açıklaması üretir.
         """
-        system_prompt = "Sen uzman bir E-ticaret SEO Editörüsün. Sana vereceğim ham ürün bilgisini işleyerek satış odaklı bir açıklama ve teknik özellik listesi oluşturacaksın."
+        system_prompt = "Sen uzman bir E-ticaret SEO Editörüsün. Çıktıların doğrudan Shopify'da kullanılacak HTML formatında olmalıdır."
         
         user_content = f"""
-        Aşağıdaki 3 kurala harfiyen uy:
+        Aşağıdaki kurallara uyarak ürün açıklamasını HTML formatında oluştur:
 
-        KURAL 1: ÜRÜN AÇIKLAMASI
-        - Asla başlık atma.
-        - Yapay zeka klişeleri (benzersiz, harika, çığır açan vb.) kullanma.
-        - Müşteriye hitap eden, samimi, SEO uyumlu ve akıcı bir paragraf yaz.
-        - Çıktıyı HTML formatında ver (paragraflar için <p>, alt satıra geçmek için <br> kullan).
+        1. FORMATLAMA (HTML):
+        - Paragrafları <p> etiketi içine al.
+        - Satır sonlarında MUTLAKA <br> etiketi kullan. (Shopify'da alt satıra geçmek için \\n yetersizdir, <br> şarttır).
+        - "Özellikler" başlığını <strong> etiketi ile kalın yap.
+        - Özellikler listesindeki her maddeyi yeni bir satıra (<br>) yaz.
 
-        KURAL 2: VERİ AYIKLAMA VE TABLO DOLDURMA (ÇOK KRİTİK)
-        - Aşağıdaki "Özellikler" şablonunu kullan.
-        - Sana verdiğim metni tara ve şablondaki maddelerin (Boy, Beden, Kumaş vb.) karşılıklarını bul.
-        - EĞER BİLGİYİ BULURSAN: İki noktanın karşısına yaz.
-        - EĞER BİLGİ YOKSA: İki noktanın karşısını tamamen BOŞ bırak.
-        - ASLA "Bilgi yok", "Yazılacak", "[...]" gibi ifadeler kullanma. Yoksa boş kalsın.
-        - Özellikler listesini HTML olarak formatla (her satırın sonuna <br> koy).
+        2. İÇERİK KURALLARI:
+        - Asla başlık (H1, H2) atma.
+        - Yapay zeka klişeleri kullanma.
+        - Müşteriye hitap eden samimi bir dil kullan.
+        
+        3. VERİ AYIKLAMA:
+        - Aşağıdaki şablondaki verileri metinden bul ve doldur. Bulamazsan boş bırak.
+        - Asla "Bilgi yok" yazma.
 
-        KURAL 3: SABİT İÇERİK
-        - Şablonun en altındaki "Tüm ürünlerimiz..." ile başlayan iki cümleyi asla silme ve değiştirme.
+        4. SABİT İÇERİK:
+        - En alttaki "Tüm ürünlerimiz..." cümlelerini koru.
 
         ---
-        ÇIKTI FORMATIN AŞAĞIDAKİ GİBİ OLMALIDIR (Bunu kopyala ve içini doldur):
+        İSTENEN HTML ÇIKTI ŞABLONU (Bunu doldur):
 
-        <p>[Buraya yazdığın SEO uyumlu ürün açıklaması gelecek]</p>
+        <p>[Buraya SEO uyumlu ürün açıklaması]</p>
         <br>
         <strong>Özellikler:</strong><br>
-        Manken Bedeni: <br>
-        Manken Boyu: <br>
-        Manken Ağırlığı: <br>
-        Ürün Boyu: <br>
-        Göğüs: <br>
-        Bel: <br>
-        Basen: <br>
-        Kumaş İçeriği: <br>
-        Kumaş Türü: <br>
-        Yıkama: <br>
-        Model Detayı: <br>
+        Manken Bedeni: [Değer]<br>
+        Manken Boyu: [Değer]<br>
+        Manken Ağırlığı: [Değer]<br>
+        Ürün Boyu: [Değer]<br>
+        Göğüs: [Değer]<br>
+        Bel: [Değer]<br>
+        Basen: [Değer]<br>
+        Kumaş İçeriği: [Değer]<br>
+        Kumaş Türü: [Değer]<br>
+        Yıkama: [Değer]<br>
+        Model Detayı: [Değer]<br>
         <br>
+        <p>
         Tüm ürünlerimiz esnek kumaştır.<br>
         Tüm ürünlerimiz büyük beden ürünlerdir.
+        </p>
 
         ---
-        İŞLENECEK HAM VERİ:
+        HAM VERİ:
         Ürün Adı: {product_name}
         Mevcut Açıklama: {current_description}
         Ek Talimatlar: {custom_prompt}
