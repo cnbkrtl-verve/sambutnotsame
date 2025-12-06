@@ -57,18 +57,26 @@ class SEOManager:
         """
         Ürün açıklaması üretir.
         """
-        system_prompt = "Sen uzman bir e-ticaret SEO içerik yazarısın. Ürünleri satışa dönüştürecek, samimi ve profesyonel bir dille anlatırsın."
+        system_prompt = """Sen uzman bir e-ticaret SEO içerik yazarısın. 
+        Görevin, verilen talimatlara göre ürün açıklamasını düzenlemektir.
+        
+        KRİTİK KURALLAR:
+        1. KORUMA: Kullanıcının "değiştirme", "sabit kalsın", "dokunma" dediği bölümleri (başlıkları VE yanlarındaki içeriklerini) ASLA değiştirme. Orijinal metindeki gibi harfiyen kalsın.
+        2. FORMAT: Çıktıda sadece ürün açıklaması olsun. "İşte yeni açıklama:", "Ürün Başlığı:" gibi ek metinler veya sohbet cümleleri ekleme.
+        3. İÇERİK: Sadece izin verilen kısımları (genellikle giriş paragrafı, pazarlama metni vb.) SEO uyumlu ve satış odaklı hale getir.
+        """
         
         user_content = f"""
-        Görevin: Aşağıdaki ürün için ürün açıklamasını kullanıcı talimatlarına göre oluşturmak veya düzenlemek.
-        
+        ÜRÜN BİLGİLERİ:
         Ürün Adı: {product_name}
-        Mevcut Açıklama: {current_description}
-        Özellikler: {features}
         
-        Kullanıcı Talimatları: {custom_prompt}
+        MEVCUT AÇIKLAMA (REFERANS):
+        {current_description}
         
-        ÖNEMLİ: Eğer kullanıcı talimatlarında "sadece şu kısmı değiştir", "beden tablosunu koru" gibi koruma talepleri varsa, ilgili kısımları değiştirmeden aynen bırak. Aksi takdirde en iyi satış metnini oluştur.
+        KULLANICI TALİMATLARI:
+        {custom_prompt}
+        
+        Lütfen yukarıdaki talimatlara göre nihai ürün açıklamasını oluştur. Korunması istenen kısımları (başlık ve değerleri) aynen koru, diğer kısımları zenginleştir.
         """
         
         return self.generate_text(system_prompt, user_content, image_url=image_url)
