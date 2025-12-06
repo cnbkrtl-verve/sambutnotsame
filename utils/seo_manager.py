@@ -57,26 +57,54 @@ class SEOManager:
         """
         Ürün açıklaması üretir.
         """
-        system_prompt = """Sen uzman bir e-ticaret SEO içerik yazarısın. 
-        Görevin, verilen talimatlara göre ürün açıklamasını düzenlemektir.
-        
-        KRİTİK KURALLAR:
-        1. KORUMA: Kullanıcının "değiştirme", "sabit kalsın", "dokunma" dediği bölümleri (başlıkları VE yanlarındaki içeriklerini) ASLA değiştirme. Orijinal metindeki gibi harfiyen kalsın.
-        2. FORMAT: Çıktıda sadece ürün açıklaması olsun. "İşte yeni açıklama:", "Ürün Başlığı:" gibi ek metinler veya sohbet cümleleri ekleme.
-        3. İÇERİK: Sadece izin verilen kısımları (genellikle giriş paragrafı, pazarlama metni vb.) SEO uyumlu ve satış odaklı hale getir.
-        """
+        system_prompt = "Sen uzman bir E-ticaret SEO Editörüsün. Sana vereceğim ham ürün bilgisini işleyerek satış odaklı bir açıklama ve teknik özellik listesi oluşturacaksın."
         
         user_content = f"""
-        ÜRÜN BİLGİLERİ:
+        Aşağıdaki 3 kurala harfiyen uy:
+
+        KURAL 1: ÜRÜN AÇIKLAMASI
+        - Asla başlık atma.
+        - Yapay zeka klişeleri (benzersiz, harika, çığır açan vb.) kullanma.
+        - Müşteriye hitap eden, samimi, SEO uyumlu ve akıcı bir paragraf yaz.
+        - Çıktıyı HTML formatında ver (paragraflar için <p>, alt satıra geçmek için <br> kullan).
+
+        KURAL 2: VERİ AYIKLAMA VE TABLO DOLDURMA (ÇOK KRİTİK)
+        - Aşağıdaki "Özellikler" şablonunu kullan.
+        - Sana verdiğim metni tara ve şablondaki maddelerin (Boy, Beden, Kumaş vb.) karşılıklarını bul.
+        - EĞER BİLGİYİ BULURSAN: İki noktanın karşısına yaz.
+        - EĞER BİLGİ YOKSA: İki noktanın karşısını tamamen BOŞ bırak.
+        - ASLA "Bilgi yok", "Yazılacak", "[...]" gibi ifadeler kullanma. Yoksa boş kalsın.
+        - Özellikler listesini HTML olarak formatla (her satırın sonuna <br> koy).
+
+        KURAL 3: SABİT İÇERİK
+        - Şablonun en altındaki "Tüm ürünlerimiz..." ile başlayan iki cümleyi asla silme ve değiştirme.
+
+        ---
+        ÇIKTI FORMATIN AŞAĞIDAKİ GİBİ OLMALIDIR (Bunu kopyala ve içini doldur):
+
+        <p>[Buraya yazdığın SEO uyumlu ürün açıklaması gelecek]</p>
+        <br>
+        <strong>Özellikler:</strong><br>
+        Manken Bedeni: <br>
+        Manken Boyu: <br>
+        Manken Ağırlığı: <br>
+        Ürün Boyu: <br>
+        Göğüs: <br>
+        Bel: <br>
+        Basen: <br>
+        Kumaş İçeriği: <br>
+        Kumaş Türü: <br>
+        Yıkama: <br>
+        Model Detayı: <br>
+        <br>
+        Tüm ürünlerimiz esnek kumaştır.<br>
+        Tüm ürünlerimiz büyük beden ürünlerdir.
+
+        ---
+        İŞLENECEK HAM VERİ:
         Ürün Adı: {product_name}
-        
-        MEVCUT AÇIKLAMA (REFERANS):
-        {current_description}
-        
-        KULLANICI TALİMATLARI:
-        {custom_prompt}
-        
-        Lütfen yukarıdaki talimatlara göre nihai ürün açıklamasını oluştur. Korunması istenen kısımları (başlık ve değerleri) aynen koru, diğer kısımları zenginleştir.
+        Mevcut Açıklama: {current_description}
+        Ek Talimatlar: {custom_prompt}
         """
         
         return self.generate_text(system_prompt, user_content, image_url=image_url)
