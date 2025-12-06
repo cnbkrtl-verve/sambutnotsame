@@ -19,20 +19,33 @@ class SEOManager:
             except Exception as e:
                 logging.error(f"AI Client başlatılamadı: {e}")
 
-    def generate_text(self, system_prompt, user_prompt, temperature=0.7):
+    def generate_text(self, system_prompt, user_prompt, temperature=0.7, image_url=None):
         """
-        Genel amaçlı metin üretim fonksiyonu.
+        Genel amaçlı metin üretim fonksiyonu. Görsel desteği eklendi.
         """
         if not self.client:
             return "Hata: AI API anahtarı yapılandırılmamış."
 
         try:
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            if image_url:
+                user_content = [
+                    {"type": "text", "text": user_prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url
+                        }
+                    }
+                ]
+                messages.append({"role": "user", "content": user_content})
+            else:
+                messages.append({"role": "user", "content": user_prompt})
+
             response = self.client.chat.completions.create(
                 model=self.model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=messages,
                 temperature=temperature
             )
             return response.choices[0].message.content.strip()
@@ -40,25 +53,27 @@ class SEOManager:
             logging.error(f"AI Üretim Hatası: {e}")
             return f"Hata oluştu: {str(e)}"
 
-    def generate_product_description(self, product_name, current_description, features, custom_prompt):
+    def generate_product_description(self, product_name, current_description, features, custom_prompt, image_url=None):
         """
         Ürün açıklaması üretir.
         """
         system_prompt = "Sen uzman bir e-ticaret SEO içerik yazarısın. Ürünleri satışa dönüştürecek, samimi ve profesyonel bir dille anlatırsın."
         
         user_content = f"""
-        Aşağıdaki ürün için SEO uyumlu, satış odaklı bir ürün açıklaması yaz.
+        Görevin: Aşağıdaki ürün için ürün açıklamasını kullanıcı talimatlarına göre oluşturmak veya düzenlemek.
         
         Ürün Adı: {product_name}
         Mevcut Açıklama: {current_description}
         Özellikler: {features}
         
         Kullanıcı Talimatları: {custom_prompt}
+        
+        ÖNEMLİ: Eğer kullanıcı talimatlarında "sadece şu kısmı değiştir", "beden tablosunu koru" gibi koruma talepleri varsa, ilgili kısımları değiştirmeden aynen bırak. Aksi takdirde en iyi satış metnini oluştur.
         """
         
-        return self.generate_text(system_prompt, user_content)
+        return self.generate_text(system_prompt, user_content, image_url=image_url)
 
-    def generate_seo_meta(self, product_name, description, custom_prompt):
+    def generate_seo_meta(self, product_name, description, custom_prompt, image_url=None):
         """
         Meta Title ve Meta Description üretir.
         """
@@ -76,7 +91,7 @@ class SEOManager:
         Kullanıcı Talimatları: {custom_prompt}
         """
         
-        return self.generate_text(system_prompt, user_content)
+        return self.generate_text(system_prompt, user_content, image_url=image_url)
 
     def generate_image_alt_text(self, product_name, variant_title, custom_prompt):
         """

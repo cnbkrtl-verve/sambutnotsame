@@ -280,6 +280,9 @@ with tab_cockpit:
             df["Seç"] = True
 
         # Data Editor ile Seçim
+        # Key'i dinamik yaparak select_all değiştiğinde resetlenmesini sağlıyoruz
+        editor_key = f"editor_{select_all}_{len(df)}_{search_term}"
+        
         edited_df = st.data_editor(
             df,
             column_config={
@@ -305,11 +308,13 @@ with tab_cockpit:
             },
             hide_index=True,
             use_container_width=True,
-            height=600
+            height=600,
+            key=editor_key
         )
         
         # Seçilenleri Çalışma Masasına Aktar
         selected_rows = edited_df[edited_df["Seç"] == True]
+        st.info(f"{len(selected_rows)} ürün seçildi.")
         
         st.markdown("### 📤 İşlem Seçimi")
         col_btn1, col_btn2, col_btn3 = st.columns(3)
@@ -452,6 +457,7 @@ with tab_content:
             tone = st.selectbox("İletişim Tonu", ["Satış Odaklı & İkna Edici", "Kurumsal & Profesyonel", "Samimi & Eğlenceli", "Lüks & Minimalist"])
             keywords = st.text_input("Hedef Anahtar Kelimeler", placeholder="yazlık elbise, pamuklu kumaş")
             
+            use_image_analysis = st.checkbox("📸 Görsel Analizi Kullan", value=True, help="Ürün görselini de AI'a göndererek daha detaylı içerik üretilmesini sağlar.")
             custom_prompt = st.text_area("Ek Talimatlar", "Özellikleri madde madde yaz, SEO uyumlu olsun.")
             
             if st.button("✨ İçerik Üret", type="primary"):
@@ -471,13 +477,25 @@ with tab_content:
                     }
                     
                     full_prompt = f"Ton: {tone}. Anahtar Kelimeler: {keywords}. {custom_prompt}"
+                    img_url = p.get('featuredImage', {}).get('url') if use_image_analysis and p.get('featuredImage') else None
                     
                     if "Ürün Açıklaması" in target_type:
-                        res["new_desc"] = seo_manager.generate_product_description(p['title'], p.get('description', ''), "Detaylar...", full_prompt)
+                        res["new_desc"] = seo_manager.generate_product_description(
+                            p['title'], 
+                            p.get('description', ''), 
+                            "Detaylar...", 
+                            full_prompt,
+                            image_url=img_url
+                        )
                     
                     if "Meta Title & Description" in target_type:
                         # Meta çıktısını parse etmemiz gerekebilir, şimdilik düz metin olarak alıyoruz
-                        meta_text = seo_manager.generate_seo_meta(p['title'], p.get('description', ''), full_prompt)
+                        meta_text = seo_manager.generate_seo_meta(
+                            p['title'], 
+                            p.get('description', ''), 
+                            full_prompt,
+                            image_url=img_url
+                        )
                         # Basit parsing denemesi
                         if "Title:" in meta_text and "Description:" in meta_text:
                             try:
@@ -536,8 +554,75 @@ with tab_content:
                 key="editor_content"
             )
             
-            if st.button("Tümünü Kaydet (Shopify)", type="primary"):
-                st.info("Kaydetme işlemi simüle edildi. (GraphQL entegrasyonu eklenecek)")
+            col_save_desc, col_save_meta = st.columns(2)
+
+            with col_save_desc:
+                if st.button("Sadece Açıklamaları Kaydet", type="primary", use_container_width=True):
+                    progress_bar = st.progress(0)
+                    success_count = 0
+                    rows_to_update = edited_content.to_dict('records')
+                    total_rows = len(rows_to_update)
+
+                    for i, row in enumerate(rows_to_update):
+                        if row['new_desc'] != row['original_desc']:
+                            mutation = """
+                            mutation productUpdate($input: ProductInput!) {
+                                productUpdate(input: $input) {
+                                    product { id }
+                                    userErrors { field message }
+                                }
+                            }
+                            """
+                            input_data = {
+                                "id": row['id'],
+                                "descriptionHtml": row['new_desc']
+                            }
+                            res = shopify.execute_graphql(mutation, {"input": input_data})
+                            if res and not res.get('data', {}).get('productUpdate', {}).get('userErrors'):
+                                success_count += 1
+                            else:
+                                st.error(f"Hata ({row['title']}): {res}")
+                        progress_bar.progress((i + 1) / total_rows)
+                    st.success(f"{success_count} ürün açıklaması güncellendi!")
+
+            with col_save_meta:
+                if st.button("Sadece SEO Meta Kaydet", type="primary", use_container_width=True):
+                    progress_bar = st.progress(0)
+                    success_count = 0
+                    rows_to_update = edited_content.to_dict('records')
+                    total_rows = len(rows_to_update)
+
+                    for i, row in enumerate(rows_to_update):
+                        new_mt = row['new_meta_title'] if row['new_meta_title'] else ""
+                        orig_mt = row['original_meta_title'] if row['original_meta_title'] else ""
+                        new_md = row['new_meta_desc'] if row['new_meta_desc'] else ""
+                        orig_md = row['original_meta_desc'] if row['original_meta_desc'] else ""
+
+                        if new_mt != orig_mt or new_md != orig_md:
+                            mutation = """
+                            mutation productUpdate($input: ProductInput!) {
+                                productUpdate(input: $input) {
+                                    product { id }
+                                    userErrors { field message }
+                                }
+                            }
+                            """
+                            input_data = {
+                                "id": row['id'],
+                                "seo": {}
+                            }
+                            if new_mt != orig_mt:
+                                input_data['seo']['title'] = new_mt
+                            if new_md != orig_md:
+                                input_data['seo']['description'] = new_md
+                                
+                            res = shopify.execute_graphql(mutation, {"input": input_data})
+                            if res and not res.get('data', {}).get('productUpdate', {}).get('userErrors'):
+                                success_count += 1
+                            else:
+                                st.error(f"Hata ({row['title']}): {res}")
+                        progress_bar.progress((i + 1) / total_rows)
+                    st.success(f"{success_count} ürün SEO bilgisi güncellendi!")
 
 # ==========================================
 # 4. TAB: GÖRSEL SEO
@@ -577,7 +662,8 @@ with tab_image:
                             "Renk": color_val,
                             "Mevcut Alt": p['featuredImage']['altText'],
                             "Yeni Alt": new_alt,
-                            "id": p['id']
+                            "id": p['id'],
+                            "image_id": p['featuredImage']['id']
                         })
                 st.session_state.img_preview_data = img_preview
                 st.success("Alt metinler oluşturuldu!")
@@ -594,7 +680,8 @@ with tab_image:
                         "Renk": st.column_config.TextColumn("Renk", disabled=True, width="small"),
                         "Mevcut Alt": st.column_config.TextColumn("Mevcut Alt", disabled=True, width="medium"),
                         "Yeni Alt": st.column_config.TextColumn("Yeni Alt (Düzenlenebilir)", width="large"),
-                        "id": None
+                        "id": None,
+                        "image_id": None
                     },
                     hide_index=True,
                     use_container_width=True,
@@ -602,4 +689,43 @@ with tab_image:
                 )
                 
                 if st.button("Görsel SEO'yu Uygula (Kaydet)", type="primary"):
-                     st.info("Kaydetme işlemi simüle edildi.")
+                    progress_bar = st.progress(0)
+                    success_count = 0
+                    rows = edited_img.to_dict('records')
+                    
+                    for i, row in enumerate(rows):
+                        if row['Yeni Alt'] != row['Mevcut Alt']:
+                            mutation = """
+                            mutation productImageUpdate($productId: ID!, $image: ImageInput!) {
+                                productImageUpdate(productId: $productId, image: $image) {
+                                    image {
+                                        id
+                                        altText
+                                    }
+                                    userErrors {
+                                        field
+                                        message
+                                    }
+                                }
+                            }
+                            """
+                            variables = {
+                                "productId": row['id'],
+                                "image": {
+                                    "id": row['image_id'],
+                                    "altText": row['Yeni Alt']
+                                }
+                            }
+                            
+                            res = shopify.execute_graphql(mutation, variables)
+                            if res and not res.get('data', {}).get('productImageUpdate', {}).get('userErrors'):
+                                success_count += 1
+                            else:
+                                st.error(f"Hata ({row['Ürün']}): {res}")
+                        
+                        progress_bar.progress((i + 1) / len(rows))
+                    
+                    st.success(f"{success_count} görsel alt metni güncellendi!")
+                    st.session_state.workspace_image = []
+                    if 'img_preview_data' in st.session_state:
+                        del st.session_state.img_preview_data
